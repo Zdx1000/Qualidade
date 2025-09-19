@@ -1,0 +1,164 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="row">
+  <div class="col-12">
+    <!-- HEADER DA PÁGINA -->
+    <div class="d-flex align-items-center mb-3">
+      <i class="bi bi-gear-fill text-primary me-3" style="font-size: 2rem;"></i>
+      <div>
+        <h2 class="h4 mb-1">Configuração de Listas</h2>
+        <p class="text-muted mb-0">Gerencie os valores das listas utilizadas nos formulários</p>
+      </div>
+    </div>
+
+    <!-- INSTRUÇÕES -->
+    <div class="alert alert-secondary border-0 py-2 small mb-3 d-flex align-items-center">
+      <i class="bi bi-info-circle me-2"></i>
+      <span>Adicione, edite ou remova valores. As mudanças são aplicadas imediatamente.</span>
+    </div>
+
+    <!-- LISTAS CONFIGURÁVEIS -->
+    <div class="row g-2 g-md-3">
+      {% for nome, valores in all_lists.items() %}
+      <div class="col-sm-6 col-xl-4" id="{{ nome }}">
+        <div class="card h-100">
+          <div class="card-header bg-light py-2">
+            <div class="d-flex align-items-center justify-content-between">
+              <div class="d-flex align-items-center">
+                {% if nome == 'tipo' %}
+                  <i class="bi bi-gear text-primary me-2"></i>
+                {% elif nome == 'setor' %}
+                  <i class="bi bi-building text-primary me-2"></i>
+                {% elif nome == 'area' %}
+                  <i class="bi bi-geo-alt text-primary me-2"></i>
+                {% elif nome == 'turno' %}
+                  <i class="bi bi-clock text-primary me-2"></i>
+                {% elif nome == 'integracao' %}
+                  <i class="bi bi-check-circle text-primary me-2"></i>
+                {% endif %}
+                <h6 class="mb-0 text-capitalize fw-semibold">{{ nome }}</h6>
+              </div>
+              <span class="badge bg-primary">{{ valores|length }} {{ 'item' if valores|length == 1 else 'itens' }}</span>
+            </div>
+          </div>
+          
+          <div class="card-body">
+            <!-- ADICIONAR NOVO VALOR -->
+            <div class="field-group mb-2">
+              <div class="field-group-title mb-2">
+                <i class="bi bi-plus-circle"></i>
+                Adicionar Novo Valor
+              </div>
+              <div class="input-group input-group-sm">
+                <span class="input-group-text">
+                  <i class="bi bi-tag"></i>
+                </span>
+                <input class="form-control form-control-sm" placeholder="Novo valor" data-input-novo="{{ nome }}">
+                <button class="btn btn-primary btn-sm" data-btn-add="{{ nome }}">
+                  <i class="bi bi-plus-lg me-1"></i>
+                  Adicionar
+                </button>
+              </div>
+            </div>
+
+            <!-- LISTA DE VALORES -->
+            <div class="field-group mb-0">
+              <div class="field-group-title mb-2">
+                <i class="bi bi-list-ul"></i>
+                Valores Cadastrados
+              </div>
+              <div class="list-group list-group-flush overflow-auto" data-lista="{{ nome }}" style="max-height: 260px;">
+                {% for v in valores %}
+                <div class="list-group-item d-flex align-items-center justify-content-between py-2">
+                  <div class="d-flex align-items-center">
+                    <i class="bi bi-dot text-primary me-2" style="font-size: 1.25rem;"></i>
+                    <span class="fw-medium">{{ v }}</span>
+                  </div>
+                  <div class="btn-group btn-group-sm">
+                    <button class="btn btn-outline-primary" data-btn-edit data-nome="{{ nome }}" data-valor="{{ v }}" title="Editar valor">
+                      <i class="bi bi-pencil"></i>
+                    </button>
+                    <button class="btn btn-outline-danger" data-btn-del data-nome="{{ nome }}" data-valor="{{ v }}" title="Remover valor">
+                      <i class="bi bi-trash"></i>
+                    </button>
+                  </div>
+                </div>
+                {% else %}
+                <div class="list-group-item text-center py-3">
+                  <div class="text-muted">
+                    <i class="bi bi-inbox" style="font-size: 1.5rem;"></i>
+                    <div class="mt-2">
+                      <p class="mb-0">Nenhum valor cadastrado</p>
+                      <small>Adicione acima</small>
+                    </div>
+                  </div>
+                </div>
+                {% endfor %}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <!-- AÇÕES -->
+    <div class="d-flex justify-content-between align-items-center mt-4">
+      <a class="btn btn-outline-secondary" href="{{ url_for('main.alimentacao') }}">
+        <i class="bi bi-arrow-left me-2"></i>
+        Voltar para Alimentação
+      </a>
+      <div class="text-muted small">
+        <i class="bi bi-info-circle me-1"></i>
+        As alterações são aplicadas imediatamente
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function api(nome, method='GET', body) {
+  const res = await fetch(`/api/lists/${nome}`, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  return res;
+}
+
+for (const btn of document.querySelectorAll('[data-btn-add]')) {
+  btn.addEventListener('click', async (e) => {
+    e.preventDefault();
+    const nome = btn.getAttribute('data-btn-add');
+    const input = document.querySelector(`[data-input-novo="${nome}"]`);
+    const valor = (input.value || '').trim();
+    if (!valor) return;
+    const res = await api(nome, 'POST', { valor });
+    if (res.ok) location.reload(); else alert('Erro ao adicionar');
+  });
+}
+
+for (const btn of document.querySelectorAll('[data-btn-edit]')) {
+  btn.addEventListener('click', async () => {
+    const nome = btn.getAttribute('data-nome');
+    const old = btn.getAttribute('data-valor');
+    const novo = prompt('Novo valor:', old);
+    if (!novo || novo === old) return;
+    const res = await api(nome, 'PUT', { old, new: novo });
+    if (res.ok) location.reload(); else alert('Erro ao editar');
+  });
+}
+
+for (const btn of document.querySelectorAll('[data-btn-del]')) {
+  btn.addEventListener('click', async () => {
+    const nome = btn.getAttribute('data-nome');
+    const valor = btn.getAttribute('data-valor');
+    if (!confirm(`Remover "${valor}"?`)) return;
+    const res = await api(nome, 'DELETE', { valor });
+    if (res.ok) location.reload(); else alert('Erro ao remover');
+  });
+}
+</script>
+{% endblock %}

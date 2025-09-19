@@ -1,0 +1,267 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="row">
+  <div class="col-12">
+    <!-- HEADER DA PÁGINA -->
+    <div class="d-flex align-items-center mb-4">
+      <i class="bi bi-table text-primary me-3" style="font-size: 2rem;"></i>
+      <div>
+        <h2 class="h4 mb-1">Tabela de Registros</h2>
+        <p class="text-muted mb-0">Visualize e gerencie os dados cadastrados</p>
+      </div>
+    </div>
+
+    <!-- FILTROS -->
+    <div class="card mb-4">
+      <div class="card-body">
+        <div class="d-flex align-items-center mb-3">
+          <i class="bi bi-funnel text-primary me-2"></i>
+          <h5 class="mb-0">Filtros de Pesquisa</h5>
+        </div>
+        
+        <form class="row g-3" method="get">
+          <!-- FILTROS DE DATA -->
+          <div class="col-md-6">
+            <div class="field-group">
+              <div class="field-group-title">
+                <i class="bi bi-calendar-range"></i>
+                Período
+              </div>
+              <div class="row g-2">
+                <div class="col-6">
+                  <label class="form-label">
+                    <i class="bi bi-calendar-check me-1"></i>
+                    Data Mínima
+                  </label>
+                  <input type="date" name="min_data" class="form-control" value="{{ min_data or '' }}">
+                </div>
+                <div class="col-6">
+                  <label class="form-label">
+                    <i class="bi bi-calendar-x me-1"></i>
+                    Data Máxima
+                  </label>
+                  <input type="date" name="max_data" class="form-control" value="{{ max_data or '' }}">
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- FILTROS DE TEXTO -->
+          <div class="col-md-6">
+            <div class="field-group">
+              <div class="field-group-title">
+                <i class="bi bi-search"></i>
+                Busca por Dados
+              </div>
+              <div class="row g-2">
+                <div class="col-4">
+                  <label class="form-label">
+                    <i class="bi bi-person me-1"></i>
+                    Nome
+                  </label>
+                  <input type="text" name="q_nome" class="form-control" value="{{ q_nome or '' }}" placeholder="Ex.: Maria">
+                </div>
+                <div class="col-4">
+                  <label class="form-label">
+                    <i class="bi bi-hash me-1"></i>
+                    Matrícula
+                  </label>
+                  <input type="number" name="q_matricula" class="form-control" value="{{ q_matricula or '' }}" placeholder="Ex.: 1234">
+                </div>
+                <div class="col-4">
+                  <label class="form-label">
+                    <i class="bi bi-person-check me-1"></i>
+                    Supervisor
+                  </label>
+                  <input type="text" name="q_supervisor" class="form-control" value="{{ q_supervisor or '' }}" placeholder="Ex.: JOÃO">
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- AÇÕES DOS FILTROS -->
+          <div class="col-12">
+            <div class="d-flex gap-2 justify-content-between align-items-center">
+              <div class="d-flex gap-2">
+                <button class="btn btn-primary" type="submit">
+                  <i class="bi bi-search me-2"></i>
+                  Filtrar Dados
+                </button>
+                <a class="btn btn-outline-secondary" href="{{ url_for('main.tabela') }}">
+                  <i class="bi bi-arrow-counterclockwise me-2"></i>
+                  Limpar Filtros
+                </a>
+              </div>
+              <a class="btn btn-success" href="{{ url_for('main.tabela_export', min_data=min_data, max_data=max_data, q_nome=q_nome, q_matricula=q_matricula, q_supervisor=q_supervisor) }}">
+                <i class="bi bi-file-earmark-spreadsheet me-2"></i>
+                Exportar XLSX
+              </a>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- TABELA DE DADOS -->
+    <div class="card">
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover align-middle mb-0">
+            <thead class="table-light sticky-top">
+              <tr>
+                <th style="width: 80px;" class="text-center">
+                  <i class="bi bi-gear-fill me-1"></i>
+                  Ações
+                </th>
+                <th>
+                  <i class="bi bi-calendar-date me-1"></i>
+                  Data
+                </th>
+                <th>
+                  <i class="bi bi-hash me-1"></i>
+                  Matrícula
+                </th>
+                <th>
+                  <i class="bi bi-person me-1"></i>
+                  Nome
+                </th>
+                <th>
+                  <i class="bi bi-gear me-1"></i>
+                  Tipo
+                </th>
+                <th>
+                  <i class="bi bi-building me-1"></i>
+                  Setor
+                </th>
+                <th>
+                  <i class="bi bi-geo-alt me-1"></i>
+                  Área
+                </th>
+                <th>
+                  <i class="bi bi-clock me-1"></i>
+                  Turno
+                </th>
+                <th>
+                  <i class="bi bi-person-check me-1"></i>
+                  Supervisor
+                </th>
+                <th>
+                  <i class="bi bi-check-circle me-1"></i>
+                  Integração
+                </th>
+                <th>
+                  <i class="bi bi-chat-left-text me-1"></i>
+                  Observação
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in rows %}
+              <tr class="table-row-hover">
+                <td class="text-center">
+                  <form method="post" action="{{ url_for('main.excluir', item_id=r.id, min_data=min_data, max_data=max_data, q_nome=q_nome, q_matricula=q_matricula, q_supervisor=q_supervisor, page=page, per_page=per_page) }}" onsubmit="return confirm('⚠️ Confirma excluir este registro?');" style="display:inline;">
+                    <button class="btn btn-sm btn-outline-danger" title="Excluir registro">
+                      <i class="bi bi-trash"></i>
+                    </button>
+                  </form>
+                </td>
+                <td>
+                  <span class="badge bg-light text-dark">
+                    {{ r.data.strftime('%d/%m/%Y') }}
+                  </span>
+                </td>
+                <td>
+                  <strong class="text-primary">{{ r.matricula }}</strong>
+                </td>
+                <td>
+                  <div>
+                    <div class="fw-semibold">{{ r.nome }}</div>
+                  </div>
+                </td>
+                <td>
+                  <span class="badge bg-primary">{{ r.tipo }}</span>
+                </td>
+                <td>{{ r.setor }}</td>
+                <td>{{ r.area }}</td>
+                <td>
+                  <span class="badge bg-secondary">{{ r.turno }}</span>
+                </td>
+                <td>
+                  <strong>{{ r.supervisor }}</strong>
+                </td>
+                <td>
+                  <span class="badge {{ 'bg-success' if r.integracao == 'SIM' else 'bg-warning' }}">
+                    <i class="bi bi-{{ 'check-circle' if r.integracao == 'SIM' else 'x-circle' }} me-1"></i>
+                    {{ r.integracao }}
+                  </span>
+                </td>
+                <td class="text-truncate" style="max-width: 200px;" title="{{ r.observacao or '' }}">
+                  {% if r.observacao %}
+                    <i class="bi bi-chat-left-quote me-1 text-muted"></i>
+                    {{ r.observacao }}
+                  {% else %}
+                    <span class="text-muted fst-italic">Sem observações</span>
+                  {% endif %}
+                </td>
+              </tr>
+              {% else %}
+              <tr>
+                <td colspan="11" class="text-center py-5">
+                  <div class="text-muted">
+                    <i class="bi bi-inbox" style="font-size: 3rem;"></i>
+                    <div class="mt-2">
+                      <h5>Nenhum registro encontrado</h5>
+                      <p class="mb-0">Tente ajustar os filtros ou cadastre novos colaboradores</p>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAGINAÇÃO -->
+    {% if pagination and pagination.pages > 1 %}
+    <div class="card mt-4">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center">
+          <div class="text-muted">
+            <i class="bi bi-info-circle me-1"></i>
+            Página <strong>{{ page }}</strong> de <strong>{{ pagination.pages }}</strong> • 
+            <strong>{{ pagination.total }}</strong> registros encontrados
+          </div>
+          
+          <nav aria-label="Navegação de página">
+            <ul class="pagination pagination-sm mb-0">
+              <li class="page-item {{ 'disabled' if not pagination.has_prev else '' }}">
+                <a class="page-link" href="{{ url_for('main.tabela', min_data=min_data, max_data=max_data, q_nome=q_nome, q_matricula=q_matricula, q_supervisor=q_supervisor, page=pagination.prev_num, per_page=per_page) }}">
+                  <i class="bi bi-chevron-left"></i>
+                </a>
+              </li>
+              
+              {# Mostrar pequena janela de páginas #}
+              {% set start = max(1, page-2) %}
+              {% set end = min(pagination.pages, page+2) %}
+              {% for p in range(start, end+1) %}
+                <li class="page-item {{ 'active' if p == page else '' }}">
+                  <a class="page-link" href="{{ url_for('main.tabela', min_data=min_data, max_data=max_data, q_nome=q_nome, q_matricula=q_matricula, q_supervisor=q_supervisor, page=p, per_page=per_page) }}">{{ p }}</a>
+                </li>
+              {% endfor %}
+              
+              <li class="page-item {{ 'disabled' if not pagination.has_next else '' }}">
+                <a class="page-link" href="{{ url_for('main.tabela', min_data=min_data, max_data=max_data, q_nome=q_nome, q_matricula=q_matricula, q_supervisor=q_supervisor, page=pagination.next_num, per_page=per_page) }}">
+                  <i class="bi bi-chevron-right"></i>
+                </a>
+              </li>
+            </ul>
+          </nav>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
