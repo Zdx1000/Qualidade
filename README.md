@@ -26,3 +26,30 @@ Após executar, acesse: http://127.0.0.1:5000/
 ## Notas
 - O banco SQLite é criado em `instance/qualidade.db`. Os valores padrão das listas são semeados automaticamente no primeiro start.
 - Para alterar a SECRET_KEY em produção, configure variável de ambiente ou ajuste em `app/__init__.py`.
+
+## Empacotar com auto-py-to-exe (PyInstaller)
+O projeto está preparado para rodar empacotado (detecta ambiente frozen e resolve templates/static e instance corretamente).
+
+Passos (Windows):
+1) Instalar a ferramenta
+```
+pip install auto-py-to-exe
+```
+2) Abrir o utilitário
+```
+auto-py-to-exe
+```
+3) Configurar:
+- Script: `servidor.py`
+- Onefile: marcado (recomendado)
+- Console: sua escolha (Console para logs; Windowed para ocultar console)
+- Add Files (Additional Files): adicione as pastas `templates` e `static` como dados:
+	- Source: `templates`  | Destination: `templates`
+	- Source: `static`     | Destination: `static`
+- Advanced > `--collect-all` não é necessário.
+
+4) Build e executar o .exe gerado. O banco ficará em uma pasta `instance` criada ao lado do executável.
+
+Observações:
+- Ao rodar o .exe, a app sobe em `http://127.0.0.1:5000` (padrão). Ajuste a porta em `servidor.py` caso precise.
+- Para logs, prefira deixar com Console ligado na primeira execução.

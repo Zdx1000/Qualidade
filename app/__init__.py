@@ -2,18 +2,58 @@ from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from pathlib import Path
 from sqlalchemy import text
+import sys
+import os
 
 # Database instance
 db = SQLAlchemy()
 
 
+def _is_frozen() -> bool:
+    return getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS')
+
+
+def _base_path() -> Path:
+    """Retorna o diretório base onde ficam templates/static/instance.
+    - Em ambiente empacotado (PyInstaller): usa o diretório do executável para persistir dados (instance)
+      e sys._MEIPASS para assets (templates/static).
+    - Em desenvolvimento: raiz do projeto (.. da pasta app).
+    """
+    if _is_frozen():
+        # Diretório do executável (persistente):
+        return Path(sys.executable).resolve().parent
+    # Rodando do código-fonte: raiz do projeto
+    return Path(__file__).resolve().parent.parent
+
+
+def _assets_path() -> Path:
+    """Diretório para assets (templates/static).
+    No PyInstaller onefile, assets são extraídos em sys._MEIPASS.
+    """
+    if _is_frozen():
+        return Path(sys._MEIPASS)  # type: ignore[attr-defined]
+    return _base_path()
+
+
 def create_app(test_config: dict | None = None) -> Flask:
-    # templates/static estão na raiz do projeto (../templates e ../static)
+    base = _base_path()
+    assets = _assets_path()
+    templates_dir = assets / 'templates'
+    static_dir = assets / 'static'
+    instance_dir = base / 'instance'
+
+    # Garante que a pasta de instance existe e é persistente (ao lado do exe ou do projeto)
+    try:
+        instance_dir.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
+
     app = Flask(
         __name__,
         instance_relative_config=True,
-        template_folder="../templates",
-        static_folder="../static",
+        instance_path=str(instance_dir),
+        template_folder=str(templates_dir),
+        static_folder=str(static_dir),
     )
 
     # Configs
@@ -27,11 +67,7 @@ def create_app(test_config: dict | None = None) -> Flask:
     if test_config is not None:
         app.config.update(test_config)
 
-    # Ensure instance folder exists
-    try:
-        Path(app.instance_path).mkdir(parents=True, exist_ok=True)
-    except OSError:
-        pass
+    # instance_path já garantido acima
 
     # Init DB
     db.init_app(app)
