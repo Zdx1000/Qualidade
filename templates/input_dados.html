@@ -1,0 +1,69 @@
+{% extends 'base.html' %}
+
+{% block head %}
+  <title>Input*Dados - Qualidade</title>
+{% endblock %}
+
+{% block content %}
+<div class="card shadow-sm">
+  <div class="card-body">
+    <h2 class="h5 mb-3">Input*Dados</h2>
+    <p class="text-muted">Envie um arquivo <code>.xlsx</code>. O backend vai processar com pandas e imprimir um preview no console do servidor.</p>
+
+  <form action="{{ url_for('main.input_dados') }}" method="post" enctype="multipart/form-data" class="row gy-3" data-loading="true">
+      <div class="col-12 col-md-8">
+        <label for="file" class="form-label">Arquivo XLSX</label>
+        <input class="form-control" type="file" id="file" name="file" accept=".xlsx" required>
+      </div>
+      <div class="col-12 col-md-4 d-flex align-items-end">
+        <button type="submit" class="btn btn-primary w-100">
+          <i class="bi bi-upload"></i>
+          Enviar e Processar
+        </button>
+      </div>
+    </form>
+
+    <hr class="my-4">
+    {% if preview_cols and preview_rows %}
+    <div class="card mt-3">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <div>
+          <strong>Prévia dos dados (máx. 5 linhas)</strong>
+          {% if filename %}<span class="text-muted ms-2">Arquivo: {{ filename }}</span>{% endif %}
+        </div>
+        {% if preview_shape %}
+          <span class="badge text-bg-light">Total: {{ preview_shape[0] }} linhas, {{ preview_shape[1] }} colunas</span>
+        {% endif %}
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover table-striped mb-0">
+            <thead>
+              <tr>
+                {% for col in preview_cols %}
+                  <th scope="col">{{ col }}</th>
+                {% endfor %}
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in preview_rows %}
+                <tr>
+                  {% for cell in row %}
+                    <td>{{ cell }}</td>
+                  {% endfor %}
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <a href="{{ url_for('main.tabela') }}" class="btn btn-outline-primary">
+      <i class="bi bi-arrow-left"></i>
+      Voltar para Tabela
+    </a>
+  </div>
+</div>
+{% endblock %}

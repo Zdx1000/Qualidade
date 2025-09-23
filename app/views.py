@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, send_file
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, send_file, current_app
 from sqlalchemy import and_, func
 from datetime import datetime, timedelta
 from . import db
@@ -356,3 +356,65 @@ def api_lists(nome_lista):
         return jsonify({'ok': True})
 
     return jsonify({'error': 'Método não suportado'}), 405
+
+
+# Página para upload de planilha (Input*Dados)
+@bp.route('/input-dados', methods=['GET', 'POST'])
+def input_dados():
+    if request.method == 'POST':
+        file = request.files.get('file')
+        if not file or file.filename == '':
+            flash('Nenhum arquivo selecionado.', 'warning')
+            return redirect(url_for('main.input_dados'))
+
+        filename = file.filename
+        if not filename.lower().endswith('.xlsx'):
+            flash('Formato inválido. Envie um arquivo .xlsx', 'danger')
+            return redirect(url_for('main.input_dados'))
+
+        try:
+            import pandas as pd  # import local para não quebrar app se pandas não estiver instalado
+        except Exception:
+            flash('Dependência pandas não encontrada. Instale com: pip install pandas', 'danger')
+            return redirect(url_for('main.input_dados'))
+
+        try:
+            # Garante leitura do início do stream
+            file.stream.seek(0)
+            df = pd.read_excel(file, engine='openpyxl')
+
+            # Logs no console
+            print('Input*Dados: planilha recebida ->', filename)
+            print('Dimensão:', df.shape)
+            print('Colunas:', list(df.columns))
+            preview_rows_count = min(5, len(df))
+            if preview_rows_count > 0:
+                print('Prévia (até 5 linhas):')
+                try:
+                    print(df.head(preview_rows_count).to_string(index=False))
+                except Exception:
+                    print(df.head(preview_rows_count))
+
+            current_app.logger.info('Input*Dados: %s linhas, %s colunas. Colunas: %s', df.shape[0], df.shape[1], list(df.columns))
+
+            # Monta prévia para renderização (até 5 linhas)
+            preview_df = df.head(5).copy()
+            # Converte NaN para vazio e todos os valores para string para evitar problemas no Jinja
+            try:
+                preview_df = preview_df.fillna('')
+            except Exception:
+                pass
+            try:
+                preview_rows = preview_df.astype(str).values.tolist()
+            except Exception:
+                preview_rows = preview_df.values.tolist()
+            preview_cols = [str(c) for c in list(preview_df.columns)]
+
+            flash(f'Arquivo "{filename}" processado com sucesso. Linhas: {df.shape[0]} | Colunas: {df.shape[1]}', 'success')
+            return render_template('input_dados.html', preview_cols=preview_cols, preview_rows=preview_rows, preview_shape=df.shape, filename=filename)
+        except Exception as e:
+            current_app.logger.exception('Falha ao processar planilha %s', filename)
+            flash(f'Falha ao processar o arquivo: {e}', 'danger')
+            return redirect(url_for('main.input_dados'))
+
+    return render_template('input_dados.html')
