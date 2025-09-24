@@ -56,6 +56,10 @@
               <i class="bi bi-input-cursor-text me-2"></i>
               <span>input*Dados</span>
             </a>
+            <a class="nav-item {{ 'active' if request.endpoint == 'main.painel_grafico' else '' }}" href="{{ url_for('main.painel_grafico') }}">
+              <i class="bi bi-bar-chart-line me-2"></i>
+              <span>Painel Gráfico</span>
+            </a>
             <a class="nav-item {{ 'active' if request.endpoint == 'main.config_lists' else '' }}" href="{{ url_for('main.config_lists') }}">
               <i class="bi bi-gear me-2"></i>
               <span>Configurações</span>
@@ -82,6 +86,10 @@
             <a class="mobile-nav-item {{ 'active' if request.endpoint == 'main.input_dados' else '' }}" href="{{ url_for('main.input_dados') }}">
               <i class="bi bi-input-cursor-text me-2"></i>
               input*Dados
+            </a>
+            <a class="mobile-nav-item {{ 'active' if request.endpoint == 'main.painel_grafico' else '' }}" href="{{ url_for('main.painel_grafico') }}">
+              <i class="bi bi-bar-chart-line me-2"></i>
+              Painel Gráfico
             </a>
             <a class="mobile-nav-item {{ 'active' if request.endpoint == 'main.config_lists' else '' }}" href="{{ url_for('main.config_lists') }}">
               <i class="bi bi-gear me-2"></i>

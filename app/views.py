@@ -7,7 +7,67 @@ from .models import ConfigList, Colaborador
 bp = Blueprint('main', __name__)
 
 
+last_planilha = None
+
+
 # Helpers
+
+def manipular_dados(df):
+    """Prepara o DF da planilha e faz merge com o banco (apenas tipo TALKMAN) por Matrícula.
+
+    - Gera coluna "Matrícula" a partir de "Funcionário" se necessário.
+    - Deduplica por "Matrícula" na planilha.
+    - Busca do SQLite (tabela Colaborador) apenas registros com tipo == 'TALKMAN'.
+    - Faz merge inner em "Matrícula" e retorna o DF resultante.
+    """
+    import pandas as pd
+    from sqlalchemy import select
+
+    # 1) Preparar DataFrame da planilha
+    try:
+        database = df.copy()
+
+
+        database["Funcionário"] = database["Funcionário"].astype(int)
+        # Deduplicar por matrícula
+        database = database.drop_duplicates(subset=["Funcionário"]).reset_index(drop=True)
+    except Exception as e:
+        current_app.logger.exception("Falha preparando DataFrame para merge: %s", e)
+        flash(f'Falha preparando planilha para merge: {e}', 'danger')
+        return None
+
+    try:
+        bind = db.session.get_bind()
+        stmt = select(
+            Colaborador.matricula.label("Matrícula"),
+            Colaborador.nome.label("Nome_DB"),
+            Colaborador.tipo.label("Tipo"),
+            Colaborador.setor.label("Setor"),
+            Colaborador.area.label("Área"),
+            Colaborador.turno.label("Turno"),
+            Colaborador.supervisor.label("Supervisor"),
+            Colaborador.integracao.label("Integração"),
+            Colaborador.data.label("Data_DB"),
+        ).where(Colaborador.tipo == 'TALKMAN')
+        df_db = pd.read_sql(stmt, bind)
+    except Exception as e:
+        current_app.logger.exception("Falha ao ler dados do banco para merge: %s", e)
+        flash(f'Falha ao carregar dados do banco: {e}', 'danger')
+        return None
+
+    try:
+        merged = pd.merge(database, df_db, left_on="Funcionário", right_on="Matrícula", how="left")
+
+
+    except Exception as e:
+        current_app.logger.exception("Falha no merge dos dados: %s", e)
+        flash(f'Falha ao mesclar dados: {e}', 'danger')
+        return None
+
+    current_app.logger.info("Merge TALKMAN concluído: %s linhas x %s colunas", merged.shape[0], merged.shape[1])
+    return merged, database, df_db
+
+
 
 def get_list(nome: str) -> list[str]:
     rows = ConfigList.query.filter_by(nome_lista=nome).order_by(ConfigList.valor.asc()).all()
@@ -379,27 +439,31 @@ def input_dados():
             return redirect(url_for('main.input_dados'))
 
         try:
-            # Garante leitura do início do stream
             file.stream.seek(0)
             df = pd.read_excel(file, engine='openpyxl')
 
-            # Logs no console
-            print('Input*Dados: planilha recebida ->', filename)
-            print('Dimensão:', df.shape)
-            print('Colunas:', list(df.columns))
-            preview_rows_count = min(5, len(df))
-            if preview_rows_count > 0:
-                print('Prévia (até 5 linhas):')
+            
+            if file.filename.startswith("Rastreabilidade_Tra"):
                 try:
-                    print(df.head(preview_rows_count).to_string(index=False))
-                except Exception:
-                    print(df.head(preview_rows_count))
+                    df_listColomns = ["Do Endereço", "Funcionário", "Nome", "Data", "Execução por Voz"]
+                    df = df[df_listColomns]
+                    df["MOD"] = df["Do Endereço"].fillna("").astype(str).str[:1]
+                    flash(f'Arquivo de rastreabilidade detectado. Linhas: Columns {df_listColomns} | MOD Adicionado', 'info')
+
+                    global last_planilha
+                    planilha = df.copy()
+                    df_manipulada, planilha, bancodb = manipular_dados(planilha)
+
+                    if planilha is not None:
+                        last_planilha = planilha
+                    
+                except Exception as e:
+                    flash(f'Falha ao processar arquivo de rastreabilidade: {e}', 'danger')
 
             current_app.logger.info('Input*Dados: %s linhas, %s colunas. Colunas: %s', df.shape[0], df.shape[1], list(df.columns))
 
-            # Monta prévia para renderização (até 5 linhas)
             preview_df = df.head(5).copy()
-            # Converte NaN para vazio e todos os valores para string para evitar problemas no Jinja
+
             try:
                 preview_df = preview_df.fillna('')
             except Exception:
@@ -418,3 +482,276 @@ def input_dados():
             return redirect(url_for('main.input_dados'))
 
     return render_template('input_dados.html')
+
+@bp.route('/painel-grafico', methods=['GET'])
+def painel_grafico(planilha=None):
+    """Renderiza o painel gráfico com cards de consolidados e a lista de nomes (se houver planilha)."""
+    from pandas import DataFrame
+    global last_planilha
+
+    # Consolidados do banco com período selecionável
+    try:
+        # Faixa total disponível no banco (para exibição informativa)
+        min_all = db.session.query(func.min(Colaborador.data)).scalar()
+        max_all = db.session.query(func.max(Colaborador.data)).scalar()
+
+        # Turnos disponíveis (distintos no banco)
+        turnos_rows = (
+            db.session.query(Colaborador.turno)
+            .filter(Colaborador.turno.isnot(None))
+            .distinct()
+            .order_by(Colaborador.turno.asc())
+            .all()
+        )
+        available_turnos = [t[0] for t in turnos_rows]
+
+        # Filtros adicionais: Setor, Tipo, Supervisor (para timeline)
+        setores_rows = (
+            db.session.query(Colaborador.setor)
+            .filter(Colaborador.setor.isnot(None))
+            .distinct()
+            .order_by(Colaborador.setor.asc())
+            .all()
+        )
+        tipos_rows = (
+            db.session.query(Colaborador.tipo)
+            .filter(Colaborador.tipo.isnot(None))
+            .distinct()
+            .order_by(Colaborador.tipo.asc())
+            .all()
+        )
+        supervisores_rows = (
+            db.session.query(Colaborador.supervisor)
+            .filter(Colaborador.supervisor.isnot(None))
+            .distinct()
+            .order_by(Colaborador.supervisor.asc())
+            .all()
+        )
+        available_setores = [s[0] for s in setores_rows]
+        available_tipos = [t[0] for t in tipos_rows]
+        available_supervisores = [s[0] for s in supervisores_rows]
+
+        # Ler período do usuário (GET) e definir padrão como HOJE (performance)
+        min_param = request.args.get('min_data')
+        max_param = request.args.get('max_data')
+        selected_turno = request.args.get('turno') or 'all'
+        selected_setor = request.args.get('setor') or 'all'
+        selected_tipo = request.args.get('tipo') or 'all'
+        selected_supervisor = request.args.get('supervisor') or 'all'
+
+        def parse_date(s):
+            if not s:
+                return None
+            try:
+                return datetime.strptime(s, '%Y-%m-%d').date()
+            except Exception:
+                return None
+
+        today = datetime.today().date()
+        sel_min = parse_date(min_param) or today
+        sel_max = parse_date(max_param) or today
+
+        # Query filtrada pelo período e turno selecionados
+        q = db.session.query(Colaborador)
+        if sel_min:
+            q = q.filter(Colaborador.data >= sel_min)
+        if sel_max:
+            q = q.filter(Colaborador.data <= sel_max)
+        if selected_turno and selected_turno != 'all':
+            q = q.filter(Colaborador.turno == selected_turno)
+
+        total_colaboradores = q.count()
+
+        # Agregações para gráficos (aplicando os mesmos filtros)
+        q_setor = db.session.query(
+            Colaborador.setor.label('setor'),
+            func.count(func.distinct(Colaborador.matricula)).label('qtd')
+        )
+        if sel_min:
+            q_setor = q_setor.filter(Colaborador.data >= sel_min)
+        if sel_max:
+            q_setor = q_setor.filter(Colaborador.data <= sel_max)
+        if selected_turno and selected_turno != 'all':
+            q_setor = q_setor.filter(Colaborador.turno == selected_turno)
+        q_setor = q_setor.filter(Colaborador.setor.isnot(None)).group_by(Colaborador.setor).order_by(func.count(func.distinct(Colaborador.matricula)).desc())
+        setor_rows = q_setor.all()
+        setor_labels = [r.setor for r in setor_rows]
+        setor_series = [int(r.qtd or 0) for r in setor_rows]
+
+        q_turno = db.session.query(
+            Colaborador.turno.label('turno'),
+            func.count(func.distinct(Colaborador.matricula)).label('qtd')
+        )
+        if sel_min:
+            q_turno = q_turno.filter(Colaborador.data >= sel_min)
+        if sel_max:
+            q_turno = q_turno.filter(Colaborador.data <= sel_max)
+        if selected_turno and selected_turno != 'all':
+            q_turno = q_turno.filter(Colaborador.turno == selected_turno)
+        q_turno = q_turno.filter(Colaborador.turno.isnot(None)).group_by(Colaborador.turno).order_by(func.count(func.distinct(Colaborador.matricula)).desc())
+        turno_rows = q_turno.all()
+        turno_labels = [r.turno for r in turno_rows]
+        turno_series = [int(r.qtd or 0) for r in turno_rows]
+
+        # Agregação empilhada: por Tipo (séries) ao longo dos Setores (categorias), contando matrículas distintas
+        q_tipo_stack = db.session.query(
+            Colaborador.setor.label('setor'),
+            Colaborador.tipo.label('tipo'),
+            func.count(func.distinct(Colaborador.matricula)).label('qtd')
+        )
+        if sel_min:
+            q_tipo_stack = q_tipo_stack.filter(Colaborador.data >= sel_min)
+        if sel_max:
+            q_tipo_stack = q_tipo_stack.filter(Colaborador.data <= sel_max)
+        if selected_turno and selected_turno != 'all':
+            q_tipo_stack = q_tipo_stack.filter(Colaborador.turno == selected_turno)
+        q_tipo_stack = (
+            q_tipo_stack
+            .filter(Colaborador.setor.isnot(None))
+            .filter(Colaborador.tipo.isnot(None))
+            .group_by(Colaborador.setor, Colaborador.tipo)
+        )
+        rows_stack = q_tipo_stack.all()
+        # Categorias: reaproveitar ordem de setores já calculada
+        stacked_categories = setor_labels[:]
+        # Construir séries por tipo
+        from collections import defaultdict
+        tmp = defaultdict(dict)  # tipo -> {setor: qtd}
+        for r in rows_stack:
+            tmp[r.tipo][r.setor] = int(r.qtd or 0)
+        tipos_ordenados = sorted(tmp.keys())
+        stacked_series = [
+            {
+                'name': tipo,
+                'data': [tmp[tipo].get(cat, 0) for cat in stacked_categories]
+            }
+            for tipo in tipos_ordenados
+        ]
+        min_data = db.session.query(func.min(Colaborador.data))
+        max_data = db.session.query(func.max(Colaborador.data))
+        if sel_min:
+            min_data = min_data.filter(Colaborador.data >= sel_min)
+            max_data = max_data.filter(Colaborador.data >= sel_min)
+        if sel_max:
+            min_data = min_data.filter(Colaborador.data <= sel_max)
+            max_data = max_data.filter(Colaborador.data <= sel_max)
+        if selected_turno and selected_turno != 'all':
+            min_data = min_data.filter(Colaborador.turno == selected_turno)
+            max_data = max_data.filter(Colaborador.turno == selected_turno)
+        min_data = min_data.scalar()
+        max_data = max_data.scalar()
+
+        # Strings para inputs (YYYY-MM-DD)
+        def to_str(d):
+            try:
+                return d.strftime('%Y-%m-%d') if d else ''
+            except Exception:
+                return ''
+
+        min_all_str = to_str(min_all)
+        max_all_str = to_str(max_all)
+        min_data_str = to_str(sel_min)
+        max_data_str = to_str(sel_max)
+        today_str = to_str(today)
+
+        # Série temporal (Data X contagem distinta de Matrícula) com filtros
+        q_time = db.session.query(
+            Colaborador.data.label('data'),
+            func.count(func.distinct(Colaborador.matricula)).label('qtd'),
+        )
+        if sel_min:
+            q_time = q_time.filter(Colaborador.data >= sel_min)
+        if sel_max:
+            q_time = q_time.filter(Colaborador.data <= sel_max)
+        if selected_turno and selected_turno != 'all':
+            q_time = q_time.filter(Colaborador.turno == selected_turno)
+        if selected_setor and selected_setor != 'all':
+            q_time = q_time.filter(Colaborador.setor == selected_setor)
+        if selected_tipo and selected_tipo != 'all':
+            q_time = q_time.filter(Colaborador.tipo == selected_tipo)
+        if selected_supervisor and selected_supervisor != 'all':
+            q_time = q_time.filter(Colaborador.supervisor == selected_supervisor)
+        q_time = q_time.group_by(Colaborador.data).order_by(Colaborador.data.asc())
+        time_rows = q_time.all()
+        # Converter para pares [timestamp_ms, valor]
+        timeline_data = []
+        for r in time_rows:
+            try:
+                # Usar meio-dia para evitar DST edge-cases
+                ts = datetime(r.data.year, r.data.month, r.data.day, 12, 0, 0)
+                timeline_data.append([int(ts.timestamp() * 1000), int(r.qtd or 0)])
+            except Exception:
+                pass
+    except Exception as e:
+        current_app.logger.exception('Falha ao calcular consolidados do banco: %s', e)
+        total_colaboradores, min_data, max_data = 0, None, None
+        min_all_str = max_all_str = min_data_str = max_data_str = today_str = ''
+        available_turnos = []
+        selected_turno = 'all'
+        available_setores = []
+        available_tipos = []
+        available_supervisores = []
+        selected_setor = selected_tipo = selected_supervisor = 'all'
+        timeline_data = []
+        setor_labels = []
+        setor_series = []
+        turno_labels = []
+        turno_series = []
+        stacked_categories = []
+        stacked_series = []
+
+    # Dados da última planilha
+    df = planilha if planilha is not None else last_planilha
+    names = []
+    total_names = 0
+    has_df = False
+
+    if isinstance(df, DataFrame):
+        has_df = True
+        try:
+            current_app.logger.info('Painel gráfico: df com %s linhas x %s colunas', df.shape[0], df.shape[1])
+            col_nome = 'Nome' if 'Nome' in df.columns else ('Nome_DB' if 'Nome_DB' in df.columns else None)
+            if col_nome:
+                series = df[col_nome]
+                for step in (lambda s: s.dropna(), lambda s: s.astype(str), lambda s: s.drop_duplicates(), lambda s: s.sort_values()):
+                    try:
+                        series = step(series)
+                    except Exception:
+                        pass
+                names = series.tolist()
+                total_names = len(names)
+        except Exception as e:
+            current_app.logger.exception('Falha ao preparar nomes para painel: %s', e)
+
+    if not has_df:
+        current_app.logger.info('Painel gráfico: nenhuma planilha disponível')
+
+    return render_template(
+        'painel_grafico.html',
+        names=names,
+        total=total_names,
+        has_data=has_df,
+        total_colaboradores=total_colaboradores,
+        min_data=min_data,
+        max_data=max_data,
+        min_all_str=min_all_str,
+        max_all_str=max_all_str,
+        min_data_str=min_data_str,
+        max_data_str=max_data_str,
+        today_str=today_str,
+        setor_labels=setor_labels,
+        setor_series=setor_series,
+        turno_labels=turno_labels,
+        turno_series=turno_series,
+        stacked_categories=stacked_categories,
+        stacked_series=stacked_series,
+        timeline_data=timeline_data,
+        available_turnos=available_turnos,
+        selected_turno=selected_turno,
+        available_setores=available_setores,
+        available_tipos=available_tipos,
+        available_supervisores=available_supervisores,
+        selected_setor=selected_setor,
+        selected_tipo=selected_tipo,
+        selected_supervisor=selected_supervisor,
+    )
