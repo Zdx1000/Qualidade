@@ -1,0 +1,20 @@
+/* Tema 3 - Vermelho */
+:root {
+  --primary-color: #5a2a2a;     /* base escura avermelhada */
+  --primary-light: #7a3a3a;     /* variante mais clara */
+  --accent-color: #ef4444;      /* vermelho vívido */
+  --accent-hover: #dc2626;      /* vermelho hover */
+  --success-color: #22c55e;     /* verde para sucesso */
+  --warning-color: #f59e0b;     /* amarelo aviso */
+  --danger-color: #b91c1c;      /* vermelho escuro para perigo */
+  --light-bg: #fff5f5;          /* fundo claro rosado */
+  --card-bg: #ffffff;           /* cartões brancos */
+  --border-color: #f2d7d7;      /* borda rosada leve */
+  --text-muted: #6b7280;        /* cinza neutro */
+  --shadow-light: 0 2px 4px rgba(185, 28, 28, 0.12);
+  --shadow-medium: 0 4px 12px rgba(185, 28, 28, 0.18);
+  /* Fundos temáticos */
+  --app-bg: linear-gradient(135deg, #fff1f2 0%, #ffe4e6 100%);
+  --header-bg: linear-gradient(135deg, #7a1f1f 0%, #a12424 50%, #7a1f1f 100%);
+  --acc-color-bg: #ffe5e5; /* fundo para elementos de destaque */
+}

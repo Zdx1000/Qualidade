@@ -1,0 +1,20 @@
+/* Tema 2 - Azul */
+:root {
+  --primary-color: #1f3b57;     /* base escura azulada */
+  --primary-light: #3a5a78;     /* variante mais clara */
+  --accent-color: #1d9bf0;      /* azul vívido (botões/realces) */
+  --accent-hover: #1778c7;      /* azul hover */
+  --success-color: #1fbf75;     /* verde complementando o azul */
+  --warning-color: #f59e0b;     /* amarelo */
+  --danger-color: #ef4444;      /* vermelho */
+  --light-bg: #f2f7fd;          /* fundo bem claro azulado */
+  --card-bg: #ffffff;           /* cartões brancos */
+  --border-color: #d6e4f2;      /* borda azulada leve */
+  --text-muted: #6b7280;        /* cinza neutro */
+  --shadow-light: 0 2px 4px rgba(13, 71, 161, 0.12);
+  --shadow-medium: 0 4px 12px rgba(13, 71, 161, 0.18);
+  /* Fundos temáticos */
+  --app-bg: linear-gradient(135deg, #f5faff 0%, #d8e9ff 100%);
+  --header-bg: linear-gradient(135deg, #1e3c72 0%, #2a5298 50%, #1e3c72 100%);
+  --acc-color-bg: #e8effd; /* fundo para elementos de destaque */
+}

@@ -1,0 +1,20 @@
+/* Tema 4 - Verde */
+:root {
+  --primary-color: #1f3b2b;     /* base escura esverdeada */
+  --primary-light: #2f5b42;     /* variante mais clara */
+  --accent-color: #22c55e;      /* verde vívido */
+  --accent-hover: #16a34a;      /* verde hover */
+  --success-color: #22c55e;     /* sucesso verde */
+  --warning-color: #f59e0b;     /* amarelo aviso */
+  --danger-color: #ef4444;      /* vermelho erro */
+  --light-bg: #effaf3;          /* fundo claro esverdeado */
+  --card-bg: #ffffff;           /* cartões brancos */
+  --border-color: #cfe9db;      /* borda verde clara */
+  --text-muted: #6b7280;        /* cinza neutro */
+  --shadow-light: 0 2px 4px rgba(22, 163, 74, 0.12);
+  --shadow-medium: 0 4px 12px rgba(22, 163, 74, 0.18);
+  /* Fundos temáticos */
+  --app-bg: linear-gradient(135deg, #f0fff4 0%, #dcfce7 100%);
+  --header-bg: linear-gradient(135deg, #0d3b2a 0%, #1f5a42 50%, #0d3b2a 100%);
+  --acc-color-bg: #e3f8df; /* fundo para elementos de destaque */
+}

@@ -79,7 +79,17 @@
                       <i class="bi bi-pencil"></i>
                     </button>
                     <button class="btn btn-outline-danger" data-btn-del data-nome="{{ nome }}" data-valor="{{ v }}" title="Remover valor">
-                      <i class="bi bi-trash"></i>
+                      <span class="trash-anim" aria-hidden="true">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                          <g class="lid">
+                            <rect x="8" y="3.5" width="8" height="2.2" rx="0.8"></rect>
+                            <path d="M10 3.5h4" />
+                          </g>
+                          <path d="M5 7h14" />
+                          <rect x="7" y="7" width="10" height="12" rx="2"></rect>
+                          <path d="M10 11v6M14 11v6" />
+                        </svg>
+                      </span>
                     </button>
                   </div>
                 </div>

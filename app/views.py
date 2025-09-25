@@ -496,9 +496,7 @@ def input_dados():
 
 @bp.route('/painel-grafico', methods=['GET'])
 def painel_grafico(planilha=None):
-    """Renderiza o painel gráfico com cards de consolidados e a lista de nomes (se houver planilha)."""
-    from pandas import DataFrame
-    global last_planilha
+    """Renderiza o painel gráfico com cards de consolidados."""
 
     # Consolidados do banco com período selecionável
     try:
@@ -711,37 +709,8 @@ def painel_grafico(planilha=None):
         stacked_categories = []
         stacked_series = []
 
-    # Dados da última planilha
-    df = planilha if planilha is not None else last_planilha
-    names = []
-    total_names = 0
-    has_df = False
-
-    if isinstance(df, DataFrame):
-        has_df = True
-        try:
-            current_app.logger.info('Painel gráfico: df com %s linhas x %s colunas', df.shape[0], df.shape[1])
-            col_nome = 'Nome' if 'Nome' in df.columns else ('Nome_DB' if 'Nome_DB' in df.columns else None)
-            if col_nome:
-                series = df[col_nome]
-                for step in (lambda s: s.dropna(), lambda s: s.astype(str), lambda s: s.drop_duplicates(), lambda s: s.sort_values()):
-                    try:
-                        series = step(series)
-                    except Exception:
-                        pass
-                names = series.tolist()
-                total_names = len(names)
-        except Exception as e:
-            current_app.logger.exception('Falha ao preparar nomes para painel: %s', e)
-
-    if not has_df:
-        current_app.logger.info('Painel gráfico: nenhuma planilha disponível')
-
     return render_template(
         'painel_grafico.html',
-        names=names,
-        total=total_names,
-        has_data=has_df,
         total_colaboradores=total_colaboradores,
         min_data=min_data,
         max_data=max_data,

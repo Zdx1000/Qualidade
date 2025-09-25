@@ -13,11 +13,15 @@
   --text-muted: #6c757d;
   --shadow-light: 0 2px 4px rgba(0,0,0,0.1);
   --shadow-medium: 0 4px 12px rgba(0,0,0,0.15);
+  /* Variáveis de background globais */
+  --app-bg: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  --header-bg: linear-gradient(135deg, #1e3c72 0%, #2a5298 50%, #1e3c72 100%);
+  --acc-color-bg: #fff; /* fundo para elementos de destaque */
 }
 
 /* === LAYOUT GERAL === */
 body {
-  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  background: var(--app-bg);
   min-height: 100vh;
   font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
 }
@@ -28,7 +32,7 @@ body {
 
 /* === HEADER PROFISSIONAL === */
 .header-professional {
-  background: linear-gradient(135deg, #1e3c72 0%, #2a5298 50%, #1e3c72 100%);
+  background: var(--header-bg);
   color: white;
   box-shadow: 0 4px 20px rgba(0,0,0,0.15);
   border-bottom: 3px solid #3498db;
@@ -119,8 +123,18 @@ body {
   box-shadow: 0 2px 8px rgba(52, 152, 219, 0.3);
 }
 
-.nav-item i {
+.nav-item i,
+.mobile-nav-item i {
   opacity: 0.8;
+  transition: transform .25s ease, opacity .2s ease;
+  /* Composição de transform com variável para rotações específicas */
+  transform: rotate(var(--icon-rot, 0deg)) translateY(0) scale(1);
+}
+
+.nav-item:hover i,
+.mobile-nav-item:hover i {
+  transform: rotate(var(--icon-rot, 0deg)) translateY(-1px) scale(1.05);
+  opacity: 1;
 }
 
 /* Mobile Menu */
@@ -157,6 +171,8 @@ body {
   font-weight: 500;
 }
 
+/* (mantido pelo bloco conjunto acima) */
+
 .mobile-nav-item:hover {
   background: rgba(255,255,255,0.1);
   color: white;
@@ -165,6 +181,26 @@ body {
 .mobile-nav-item.active {
   background: rgba(52, 152, 219, 0.3);
   color: white;
+}
+
+/* === Animação para ícone de Configurações (engrenagem) === */
+.nav-item:hover i.bi-gear,
+.mobile-nav-item:hover i.bi-gear {
+  /* Define apenas a rotação; a translação/escala vem da regra geral */
+  --icon-rot: 30deg;
+}
+
+/* Acessibilidade: respeita preferência por reduzir movimento */
+@media (prefers-reduced-motion: reduce) {
+  .nav-item i,
+  .mobile-nav-item i,
+  .btn-outline-danger .trash-anim svg,
+  .btn-outline-danger .trash-anim .lid,
+  .btn-outline-primary i.bi-pencil {
+    transition: none !important;
+    transform: none !important;
+    animation: none !important;
+  }
 }
 
 /* === CARDS === */
@@ -247,9 +283,33 @@ body {
   border-color: var(--primary-color);
 }
 
+/* === Animação ícone de lixeira === */
+.trash-anim { display: inline-flex; align-items: center; justify-content: center; width: 1.1rem; height: 1.1rem; }
+.trash-anim svg { width: 1.1rem; height: 1.1rem; transition: transform .2s ease; }
+.trash-anim .lid { transform-origin: 12px 4px; transition: transform .2s ease; }
+.btn-outline-danger:hover .trash-anim svg { transform: translateY(-1px); }
+.btn-outline-danger:hover .trash-anim .lid { transform: rotate(-18deg) translateY(-1px); }
+
+/* === Animação caneta (Editar valor) === */
+.btn-outline-primary i.bi-pencil {
+  transition: transform .25s ease, opacity .2s ease;
+  transform: translateX(0) rotate(0deg);
+  transform-origin: 50% 60%;
+}
+.btn-outline-primary:hover i.bi-pencil,
+.btn-outline-primary:focus-visible i.bi-pencil {
+  animation: pencil-nudge .35s ease-out both;
+}
+@keyframes pencil-nudge {
+  0%   { transform: translateX(0) rotate(0deg); }
+  40%  { transform: translateX(3px) rotate(-12deg); }
+  70%  { transform: translateX(0.5px) rotate(-4deg); }
+  100% { transform: translateX(0) rotate(0deg); }
+}
+
 /* === GRUPOS DE CAMPOS === */
 .field-group {
-  background: #fff;
+  background: var(--acc-color-bg);
   border-radius: 0.5rem;
   padding: 1rem;
   margin-bottom: 1rem;
