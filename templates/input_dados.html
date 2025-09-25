@@ -45,6 +45,7 @@
               Selecione o arquivo (.xlsx)
             </label>
             <input class="form-control" type="file" id="file" name="file" accept=".xlsx" required>
+            <div id="fileFeedback" class="form-text"></div>
           </div>
           <div class="col-md-4 d-flex align-items-end">
             <button type="submit" class="btn btn-primary w-100">
@@ -113,4 +114,8 @@
     </div>
   </div>
 </div>
+{% endblock %}
+{% block scripts %}
+  {{ super() }}
+  <script src="{{ url_for('static', filename='js/input_dados.js') }}"></script>
 {% endblock %}

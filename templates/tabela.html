@@ -159,7 +159,7 @@
               {% for r in rows %}
               <tr class="table-row-hover">
                 <td class="text-center">
-                  <form method="post" action="{{ url_for('main.excluir', item_id=r.id, min_data=min_data, max_data=max_data, q_nome=q_nome, q_matricula=q_matricula, q_supervisor=q_supervisor, page=page, per_page=per_page) }}" onsubmit="return confirm('⚠️ Confirma excluir este registro?');" style="display:inline;">
+                  <form method="post" class="js-delete-form" data-confirm-message="⚠️ Confirma excluir este registro?" action="{{ url_for('main.excluir', item_id=r.id, min_data=min_data, max_data=max_data, q_nome=q_nome, q_matricula=q_matricula, q_supervisor=q_supervisor, page=page, per_page=per_page) }}" style="display:inline;">
                     <button class="btn btn-sm btn-outline-danger" title="Excluir registro">
                       <i class="bi bi-trash"></i>
                     </button>
@@ -242,10 +242,8 @@
                 </a>
               </li>
               
-              {# Mostrar pequena janela de páginas #}
-              {% set start = max(1, page-2) %}
-              {% set end = min(pagination.pages, page+2) %}
-              {% for p in range(start, end+1) %}
+              {# Mostrar pequena janela de páginas (start_page e end_page vindos do backend) #}
+              {% for p in range(start_page, end_page + 1) %}
                 <li class="page-item {{ 'active' if p == page else '' }}">
                   <a class="page-link" href="{{ url_for('main.tabela', min_data=min_data, max_data=max_data, q_nome=q_nome, q_matricula=q_matricula, q_supervisor=q_supervisor, page=p, per_page=per_page) }}">{{ p }}</a>
                 </li>
@@ -264,4 +262,8 @@
     {% endif %}
   </div>
 </div>
+{% endblock %}
+{% block scripts %}
+  {{ super() }}
+  <script src="{{ url_for('static', filename='js/tabela.js') }}"></script>
 {% endblock %}

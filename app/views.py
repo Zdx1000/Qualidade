@@ -199,6 +199,15 @@ def tabela():
     q = q.order_by(Colaborador.data.desc(), Colaborador.created_at.desc())
     pagination = db.paginate(q, page=page, per_page=per_page, error_out=False)
 
+    # Janela de páginas para paginação (evita usar max/min em Jinja)
+    try:
+        total_pages = int(pagination.pages or 1)
+    except Exception:
+        total_pages = 1
+    window = 2
+    start_page = max(1, page - window)
+    end_page = min(total_pages, page + window)
+
     return render_template(
         'tabela.html',
         rows=pagination.items,
@@ -210,6 +219,8 @@ def tabela():
         pagination=pagination,
         page=page,
         per_page=per_page,
+        start_page=start_page,
+        end_page=end_page,
     )
 
 

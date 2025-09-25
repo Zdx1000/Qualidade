@@ -16,6 +16,13 @@
 			"isBackground": true,
 			"problemMatcher": [],
 			"group": "build"
+		},
+		{
+			"label": "Start Flask server (servidor.py)",
+			"type": "shell",
+			"command": "python servidor.py",
+			"isBackground": true,
+			"group": "build"
 		}
 	]
 }
