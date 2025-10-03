@@ -1,0 +1,214 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="row">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-body">
+        <div class="d-flex align-items-center mb-4">
+          <i class="bi bi-pencil-square text-primary me-3" style="font-size: 2rem;"></i>
+          <div>
+            <h2 class="h4 mb-1">Editar Registro</h2>
+            <p class="text-muted mb-0">Atualize os dados do colaborador selecionado</p>
+          </div>
+        </div>
+
+        <form method="post" action="{{ form_action }}">
+          <!-- GRUPO: IDENTIFICAÇÃO -->
+          <div class="field-group">
+            <div class="field-group-title">
+              <i class="bi bi-person-badge"></i>
+              Identificação do Colaborador
+            </div>
+            <div class="row g-3">
+              <div class="col-md-3">
+                <label class="form-label">
+                  <i class="bi bi-hash me-1"></i>
+                  Matrícula
+                </label>
+                <input name="matricula" type="number" class="form-control" required
+                       value="{{ form.matricula }}"
+                       placeholder="Ex.: 12345">
+              </div>
+              <div class="col-md-9">
+                <label class="form-label">
+                  <i class="bi bi-person me-1"></i>
+                  Nome do Colaborador
+                </label>
+                <input name="nome" type="text" class="form-control" required
+                       value="{{ form.nome }}"
+                       placeholder="Ex.: Maria Silva Santos">
+              </div>
+            </div>
+          </div>
+
+          <!-- GRUPO: FUNÇÃO E LOCALIZAÇÃO -->
+          <div class="field-group">
+            <div class="field-group-title">
+              <i class="bi bi-briefcase"></i>
+              Função e Localização
+            </div>
+            <div class="row g-3">
+              <div class="col-md-4">
+                <label class="form-label d-flex align-items-center justify-content-between">
+                  <span>
+                    <i class="bi bi-gear me-1"></i>
+                    Tipo
+                  </span>
+                  <a href="{{ url_for('main.config_lists') }}#tipo" class="btn btn-sm btn-outline-primary config-btn">
+                    <i class="bi bi-gear-fill me-1"></i>Config
+                  </a>
+                </label>
+                <select name="tipo" class="form-select" required>
+                  <option value="" disabled>Selecionar tipo...</option>
+                  {% for v in lists.tipo %}
+                  <option value="{{ v }}" {{ 'selected' if form.tipo==v else '' }}>{{ v }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label d-flex align-items-center justify-content-between">
+                  <span>
+                    <i class="bi bi-building me-1"></i>
+                    Setor
+                  </span>
+                  <a href="{{ url_for('main.config_lists') }}#setor" class="btn btn-sm btn-outline-primary config-btn">
+                    <i class="bi bi-gear-fill me-1"></i>Config
+                  </a>
+                </label>
+                <select name="setor" class="form-select" required>
+                  <option value="" disabled>Selecionar setor...</option>
+                  {% for v in lists.setor %}
+                  <option value="{{ v }}" {{ 'selected' if form.setor==v else '' }}>{{ v }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label d-flex align-items-center justify-content-between">
+                  <span>
+                    <i class="bi bi-geo-alt me-1"></i>
+                    Área
+                  </span>
+                  <a href="{{ url_for('main.config_lists') }}#area" class="btn btn-sm btn-outline-primary config-btn">
+                    <i class="bi bi-gear-fill me-1"></i>Config
+                  </a>
+                </label>
+                <select name="area" class="form-select" required>
+                  <option value="" disabled>Selecionar área...</option>
+                  {% for v in lists.area %}
+                  <option value="{{ v }}" {{ 'selected' if form.area==v else '' }}>{{ v }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- GRUPO: GESTÃO E INTEGRAÇÃO -->
+          <div class="field-group">
+            <div class="field-group-title">
+              <i class="bi bi-people"></i>
+              Gestão e Integração
+            </div>
+            <div class="row g-3">
+              <div class="col-md-3">
+                <label class="form-label d-flex align-items-center justify-content-between">
+                  <span>
+                    <i class="bi bi-clock me-1"></i>
+                    Turno
+                  </span>
+                  <a href="{{ url_for('main.config_lists') }}#turno" class="btn btn-sm btn-outline-primary config-btn">
+                    <i class="bi bi-gear-fill me-1"></i>Config
+                  </a>
+                </label>
+                <select name="turno" class="form-select" required>
+                  <option value="" disabled>Selecionar turno...</option>
+                  {% for v in lists.turno %}
+                  <option value="{{ v }}" {{ 'selected' if form.turno==v else '' }}>{{ v }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">
+                  <i class="bi bi-person-check me-1"></i>
+                  Supervisor
+                </label>
+                <input name="supervisor" type="text" class="form-control" required
+                       value="{{ form.supervisor }}"
+                       placeholder="Ex.: JOÃO SILVA">
+                <div class="form-text">
+                  <i class="bi bi-info-circle me-1"></i>
+                  Será salvo automaticamente em MAIÚSCULAS
+                </div>
+              </div>
+              <div class="col-md-3">
+                <label class="form-label d-flex align-items-center justify-content-between">
+                  <span>
+                    <i class="bi bi-check-circle me-1"></i>
+                    Integração
+                  </span>
+                  <a href="{{ url_for('main.config_lists') }}#integracao" class="btn btn-sm btn-outline-primary config-btn">
+                    <i class="bi bi-gear-fill me-1"></i>Config
+                  </a>
+                </label>
+                <select name="integracao" class="form-select" required>
+                  <option value="" disabled>Selecionar...</option>
+                  {% for v in lists.integracao %}
+                  <option value="{{ v }}" {{ 'selected' if form.integracao==v else '' }}>{{ v }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-md-2">
+                <label class="form-label">
+                  <i class="bi bi-calendar-date me-1"></i>
+                  Data
+                </label>
+                <input name="data" type="date" class="form-control" required
+                       value="{{ form.data }}">
+              </div>
+            </div>
+          </div>
+
+          <!-- GRUPO: OBSERVAÇÕES -->
+          <div class="field-group">
+            <div class="field-group-title">
+              <i class="bi bi-chat-left-text"></i>
+              Observações Adicionais
+            </div>
+            <div class="row">
+              <div class="col-12">
+                <label class="form-label">
+                  <i class="bi bi-pencil-square me-1"></i>
+                  Observação
+                </label>
+                <textarea name="observacao" class="form-control" rows="4"
+                          placeholder="Atualize observações relevantes sobre o colaborador ou processo...">{{ form.observacao }}</textarea>
+              </div>
+            </div>
+          </div>
+
+          <!-- AÇÕES -->
+          <div class="d-flex gap-3 justify-content-between align-items-center">
+            <div class="d-flex gap-2">
+              <button class="btn btn-primary" type="submit">
+                <i class="bi bi-save me-2"></i>
+                Atualizar Registro
+              </button>
+              <a class="btn btn-outline-secondary" href="{{ return_url }}">
+                <i class="bi bi-arrow-left-circle me-2"></i>
+                Voltar para Tabela
+              </a>
+            </div>
+            <div class="text-muted small">
+              <i class="bi bi-shield-check me-1"></i>
+              Todos os campos obrigatórios mantêm validação
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+  {{ super() }}
+  <script src="{{ url_for('static', filename='js/alimentacao.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,5 @@
+
+Top 6 Setores - Distribuição de Matrículas: Barras - "Por Treinamento"
+Turnos - Análise Polar Monocromática: Mudar cores
+Análise Empilhada - Tipos por Setor: Mudar cores 
+Botão de editar na tabela...

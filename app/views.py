@@ -224,6 +224,129 @@ def tabela():
     )
 
 
+@bp.route('/tabela/<int:item_id>/editar', methods=['GET', 'POST'])
+def editar_colaborador(item_id: int):
+    col = Colaborador.query.get_or_404(item_id)
+
+    lists = {
+        'tipo': get_list('tipo'),
+        'setor': get_list('setor'),
+        'area': get_list('area'),
+        'turno': get_list('turno'),
+        'integracao': get_list('integracao'),
+    }
+
+    for key in ('tipo', 'setor', 'area', 'turno', 'integracao'):
+        current_value = getattr(col, key, None)
+        if current_value and current_value not in lists[key]:
+            lists[key] = [current_value] + lists[key]
+
+    filters_raw = {
+        'min_data': request.args.get('min_data'),
+        'max_data': request.args.get('max_data'),
+        'q_nome': request.args.get('q_nome'),
+        'q_matricula': request.args.get('q_matricula'),
+        'q_supervisor': request.args.get('q_supervisor'),
+        'page': request.args.get('page', type=int),
+        'per_page': request.args.get('per_page', type=int),
+    }
+    filters = {k: v for k, v in filters_raw.items() if v not in (None, '')}
+    return_url = url_for('main.tabela', **filters) if filters else url_for('main.tabela')
+    form_action = url_for('main.editar_colaborador', item_id=col.id, **filters) if filters else url_for('main.editar_colaborador', item_id=col.id)
+
+    if request.method == 'POST':
+        errors = []
+        try:
+            matricula_raw = request.form.get('matricula', '').strip()
+            matricula = int(matricula_raw)
+        except ValueError:
+            errors.append('Matrícula inválida.')
+            matricula = None
+
+        nome = request.form.get('nome', '').strip()
+        if not nome:
+            errors.append('Nome é obrigatório.')
+
+        tipo = request.form.get('tipo', '')
+        setor = request.form.get('setor', '')
+        area = request.form.get('area', '')
+        turno = request.form.get('turno', '')
+        supervisor = request.form.get('supervisor', '').strip().upper()
+        integracao = request.form.get('integracao', '')
+        data_str = request.form.get('data', '')
+        observacao = request.form.get('observacao', '').strip()
+
+        if tipo not in lists['tipo']:
+            errors.append('Tipo inválido.')
+        if setor not in lists['setor']:
+            errors.append('Setor inválido.')
+        if area not in lists['area']:
+            errors.append('Área inválida.')
+        if turno not in lists['turno']:
+            errors.append('Turno inválido.')
+        if integracao not in lists['integracao']:
+            errors.append('Integração inválida.')
+
+        try:
+            data = datetime.strptime(data_str, '%Y-%m-%d').date()
+        except ValueError:
+            errors.append('Data inválida.')
+            data = None
+
+        if errors:
+            for e in errors:
+                flash(e, 'danger')
+            return render_template(
+                'editar_colaborador.html',
+                col=col,
+                lists=lists,
+                form=request.form,
+                form_action=form_action,
+                return_url=return_url,
+            )
+
+        if matricula is not None:
+            col.matricula = matricula
+        col.nome = nome
+        col.tipo = tipo
+        col.setor = setor
+        col.area = area
+        col.turno = turno
+        col.supervisor = supervisor
+        col.integracao = integracao
+        if data:
+            col.data = data
+        col.observacao = observacao or None
+
+        db.session.commit()
+        flash('Registro atualizado com sucesso.', 'success')
+        return redirect(return_url)
+
+    form_data = {
+        'matricula': col.matricula,
+        'nome': col.nome,
+        'tipo': col.tipo,
+        'setor': col.setor,
+        'area': col.area,
+        'turno': col.turno,
+        'supervisor': col.supervisor,
+        'integracao': col.integracao,
+        'data': col.data.strftime('%Y-%m-%d') if col.data else '',
+        'observacao': col.observacao or '',
+    }
+
+    return render_template(
+        'editar_colaborador.html',
+        col=col,
+        lists=lists,
+        form=form_data,
+        form_action=form_action,
+        return_url=return_url,
+    )
+
+
+
+
 
 @bp.route('/excluir/<int:item_id>', methods=['POST'])
 def excluir(item_id: int):
