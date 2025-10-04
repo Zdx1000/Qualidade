@@ -1180,12 +1180,69 @@
     }
 
     const basePalette = palette && palette.length ? palette : buildPalette(4, null, mode);
-    const colors = [
+    const softAlpha = mode === 'dark' ? 0.78 : 0.68;
+    const hoverAlpha = mode === 'dark' ? 0.88 : 0.78;
+    const baseColors = [
       basePalette[0] || '#2563eb',
-      basePalette[1] || adjustColor(basePalette[0] || '#2563eb', mode === 'dark' ? -0.2 : 0.2)
+      basePalette[2] || adjustColor(basePalette[0] || '#2563eb', mode === 'dark' ? -0.1 : 0.1)
     ];
-    const borderColors = colors.map((color) => adjustColor(color, mode === 'dark' ? -0.35 : -0.25));
+    const colors = baseColors.map((color, idx) => {
+      const softened = shiftColor(color, { l: mode === 'dark' ? 0.08 : 0.16, s: mode === 'dark' ? -0.05 : -0.12, h: idx === 1 ? 6 : 0 });
+      return hexToRgba(softened || color, softAlpha);
+    });
+    const hoverColors = baseColors.map((color, idx) => {
+      const boosted = shiftColor(color, { l: mode === 'dark' ? 0.18 : -0.05, s: mode === 'dark' ? -0.02 : -0.05, h: idx === 1 ? -4 : 2 });
+      return hexToRgba(boosted || color, hoverAlpha);
+    });
+    const borderColors = baseColors.map((color) => adjustColor(color, mode === 'dark' ? -0.35 : -0.25));
     const legendColor = mode === 'dark' ? '#cbd5f5' : '#1f2937';
+    const textColor = mode === 'dark' ? '#e2e8f0' : '#0f172a';
+    const subtleColor = mode === 'dark' ? 'rgba(148, 163, 184, 0.78)' : 'rgba(100, 116, 139, 0.86)';
+
+    const externalTooltipHandler = (context) => {
+      const { chart, tooltip } = context;
+      const tooltipEl = ensureTooltipEl(chart, { mode, textColor, minWidth: 240 });
+      if (!tooltipEl) return;
+      if (!tooltip || tooltip.opacity === 0 || !tooltip.dataPoints || !tooltip.dataPoints.length) {
+        tooltipEl.style.opacity = '0';
+        return;
+      }
+
+      const dataPoint = tooltip.dataPoints[0];
+      const idx = dataPoint.dataIndex ?? 0;
+      const label = labels[idx] || dataPoint.label || '';
+      const value = rawValues[idx] || 0;
+      const perc = total > 0 ? (value / total) * 100 : 0;
+      const accent = baseColors[idx] || baseColors[0] || '#2563eb';
+
+      tooltipEl.innerHTML = `
+        <div style="display:flex; flex-direction:column; gap:10px;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="display:inline-flex; width:14px; height:14px; border-radius:999px; background:${accent}; box-shadow:0 0 0 4px ${hexToRgba(accent, 0.18)};"></span>
+            <div style="font-weight:700; font-size:14px;">${label}</div>
+          </div>
+          <div style="display:flex; flex-direction:column; gap:6px; font-size:13px;">
+            <div style="display:flex; justify-content:space-between; gap:16px;">
+              <span style="color:${subtleColor};">Colaboradores</span>
+              <strong style="font-weight:700;">${value.toLocaleString('pt-BR')}</strong>
+            </div>
+            <div style="display:flex; justify-content:space-between; gap:16px; color:${adjustColor(accent, mode === 'dark' ? 0.15 : -0.04)};">
+              <span>Participação</span>
+              <strong>${perc.toFixed(1)}%</strong>
+            </div>
+          </div>
+          <div style="border-top:1px solid ${mode === 'dark' ? 'rgba(100, 116, 139, 0.3)' : 'rgba(148, 163, 184, 0.35)'}; padding-top:6px; font-size:11px; color:${subtleColor};">
+            Total analisado: ${total.toLocaleString('pt-BR')} colaboradores treinados
+          </div>
+        </div>
+      `;
+
+      const { offsetLeft, offsetTop } = chart.canvas;
+      tooltipEl.style.opacity = '1';
+      tooltipEl.style.left = `${offsetLeft + tooltip.caretX}px`;
+      tooltipEl.style.top = `${offsetTop + tooltip.caretY}px`;
+      tooltipEl.style.transform = 'translate(-50%, calc(-100% - 18px))';
+    };
 
     return new Chart(ctx, {
       type: 'pie',
@@ -1198,7 +1255,9 @@
             backgroundColor: colors,
             borderColor: borderColors,
             borderWidth: 1.5,
-            hoverOffset: 8
+            hoverBorderWidth: 1.5,
+            hoverOffset: 8,
+            hoverBackgroundColor: hoverColors
           }
         ]
       },
@@ -1215,16 +1274,20 @@
             }
           },
           tooltip: {
-            callbacks: {
-              label: (context) => {
-                const value = context.parsed || 0;
-                const perc = total > 0 ? ((value / total) * 100).toFixed(1) : '0.0';
-                return `${context.label}: ${value.toLocaleString('pt-BR')} (${perc}%)`;
-              }
-            }
+            enabled: false,
+            external: externalTooltipHandler
           },
           datalabels: {
-            color: (context) => getReadableTextColor(colors[context.dataIndex] || '#2563eb'),
+            anchor: 'center',
+            align: 'center',
+            clamp: true,
+            color: (context) => getReadableTextColor(baseColors[context.dataIndex] || '#2563eb'),
+            backgroundColor: (context) => {
+              const base = baseColors[context.dataIndex] || '#2563eb';
+              return hexToRgba(adjustColor(base, -0.28), mode === 'dark' ? 0.82 : 0.75);
+            },
+            borderRadius: 10,
+            padding: { top: 6, bottom: 6, left: 8, right: 8 },
             font: {
               weight: '700',
               size: 12
