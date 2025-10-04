@@ -98,10 +98,128 @@
 
     <!-- Aba Input*Dados: em tratativa -->
     <div id="tab-input" class="d-none">
-      <div class="alert alert-info d-flex align-items-center" role="alert">
-        <i class="bi bi-hourglass-split me-2"></i>
-        Input*Dados — em tratativa.
-      </div>
+      {% if input_table_has_data %}
+        <div class="alert alert-primary d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3" role="alert">
+          <div class="d-flex align-items-center gap-2">
+            <i class="bi bi-database-check fs-5"></i>
+            <div>
+              <strong>Planilha Rastreabilidade carregada</strong>
+              <div class="small text-muted">Mostrando registros {{ input_table_range_start }}-{{ input_table_range_end }} de {{ input_table_total }} entradas ({{ input_table_page_size }} por página).</div>
+            </div>
+          </div>
+          <span class="badge bg-primary bg-opacity-10 text-primary px-3 py-2" style="font-size: 0.75rem;">
+            Atualizado nesta sessão
+          </span>
+        </div>
+
+        <div class="card shadow-sm">
+          <div class="card-header d-flex align-items-center justify-content-between">
+            <div class="d-flex align-items-center gap-2">
+              <i class="bi bi-table"></i>
+              <h6 class="mb-0">Prévia da planilha</h6>
+            </div>
+            <span class="badge bg-secondary bg-opacity-10 text-secondary" style="font-size: 0.7rem; font-weight: 600;">Último upload reconhecido</span>
+          </div>
+          <div class="card-body p-0">
+            <div class="table-responsive">
+              <table class="table table-hover align-middle mb-0">
+                <thead class="table-light sticky-top">
+                  <tr>
+                    <th><i class="bi bi-geo-alt me-1"></i>Do Endereço</th>
+                    <th style="width: 120px;"><i class="bi bi-hash me-1"></i>Funcionário</th>
+                    <th><i class="bi bi-person me-1"></i>Nome</th>
+                    <th style="width: 140px;"><i class="bi bi-calendar-event me-1"></i>Data</th>
+                    <th><i class="bi bi-mic me-1"></i>Execução por Voz</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for row in input_table_rows %}
+                  <tr>
+                    <td>
+                      {% if row["Do Endereço"] %}
+                        <span class="badge bg-light text-dark border">{{ row["Do Endereço"] }}</span>
+                      {% else %}
+                        <span class="text-muted">—</span>
+                      {% endif %}
+                    </td>
+                    <td>
+                      <strong class="text-primary">{{ row["Funcionário"] }}</strong>
+                    </td>
+                    <td>
+                      <div class="fw-semibold">{{ row["Nome"] }}</div>
+                    </td>
+                    <td>
+                      {% if row["Data"] %}
+                        <span class="badge bg-light text-dark">{{ row["Data"] }}</span>
+                      {% else %}
+                        <span class="text-muted">Sem data</span>
+                      {% endif %}
+                    </td>
+                    <td>
+                      {% if row["Execução por Voz"] %}
+                        <span class="badge bg-success bg-opacity-10 text-success">
+                          <i class="bi bi-soundwave me-1"></i>{{ row["Execução por Voz"] }}
+                        </span>
+                      {% else %}
+                        <span class="badge bg-secondary bg-opacity-10 text-secondary">Não informado</span>
+                      {% endif %}
+                    </td>
+                  </tr>
+                  {% else %}
+                  <tr>
+                    <td colspan="5" class="text-center py-5">
+                      <div class="text-muted">
+                        <i class="bi bi-inbox" style="font-size: 3rem;"></i>
+                        <div class="mt-2">
+                          <h5>Sem registros nesta página</h5>
+                          <p class="mb-0">Avance para outra página ou envie nova planilha.</p>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        {% if input_table_pagination %}
+        <div class="card mt-3">
+          <div class="card-body d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
+            <div class="text-muted">
+              <i class="bi bi-info-circle me-1"></i>
+              Página <strong>{{ input_table_pagination.page }}</strong> de <strong>{{ input_table_pagination.pages }}</strong>
+              • <strong>{{ input_table_total }}</strong> registros processados
+            </div>
+            <nav aria-label="Paginação Input Dados">
+              <ul class="pagination pagination-sm mb-0">
+                <li class="page-item {{ 'disabled' if not input_table_pagination.has_prev else '' }}">
+                  <a class="page-link" href="{{ input_table_pagination.prev_url or '#' }}" tabindex="{{ '-1' if not input_table_pagination.has_prev else '0' }}" aria-disabled="{{ 'true' if not input_table_pagination.has_prev else 'false' }}">
+                    <i class="bi bi-chevron-left"></i>
+                  </a>
+                </li>
+                {% for link in input_table_pagination.page_links %}
+                  <li class="page-item {{ 'active' if link.active else '' }}">
+                    <a class="page-link" href="{{ link.url }}">{{ link.page }}</a>
+                  </li>
+                {% endfor %}
+                <li class="page-item {{ 'disabled' if not input_table_pagination.has_next else '' }}">
+                  <a class="page-link" href="{{ input_table_pagination.next_url or '#' }}" tabindex="{{ '-1' if not input_table_pagination.has_next else '0' }}" aria-disabled="{{ 'true' if not input_table_pagination.has_next else 'false' }}">
+                    <i class="bi bi-chevron-right"></i>
+                  </a>
+                </li>
+              </ul>
+            </nav>
+          </div>
+        </div>
+        {% endif %}
+      {% else %}
+        <div class="alert alert-info d-flex align-items-center" role="alert">
+          <i class="bi bi-cloud-upload me-2"></i>
+          Envie uma planilha <strong class="ms-1">Rastreabilidade_Tra*.xlsx</strong> em <em>Input*Dados</em> para visualizar a prévia aqui.
+        </div>
+      {% endif %}
     </div>
 
     <div id="tab-merge" class="d-none">
@@ -195,10 +313,14 @@
       }
     }
   </style>
-  <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0"></script>
   <!-- Dados em JSON (evita erros de lint ao incorporar Jinja dentro de <script>) -->
   <script id="data-setor-labels" type="application/json">{{ setor_labels|tojson }}</script>
   <script id="data-setor-series" type="application/json">{{ setor_series|tojson }}</script>
+  <script id="data-tipo-labels" type="application/json">{{ tipo_labels|tojson }}</script>
+  <script id="data-tipo-series" type="application/json">{{ tipo_series|tojson }}</script>
   <script id="data-turno-labels" type="application/json">{{ turno_labels|tojson }}</script>
   <script id="data-turno-series" type="application/json">{{ turno_series|tojson }}</script>
   <script id="data-stacked-categories" type="application/json">{{ stacked_categories|tojson }}</script>
@@ -211,6 +333,6 @@
   <script id="data-selected-setor" type="application/json">{{ selected_setor|tojson }}</script>
   <script id="data-selected-tipo" type="application/json">{{ selected_tipo|tojson }}</script>
   <script id="data-selected-supervisor" type="application/json">{{ selected_supervisor|tojson }}</script>
-  <script src="{{ url_for('static', filename='js/painel_grafico.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/painel_grafico_chartjs.js') }}"></script>
 {% endblock %}
 {% endblock %}

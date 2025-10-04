@@ -1,6 +1,8 @@
+import math
+from datetime import datetime, timedelta
+
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, send_file, current_app
 from sqlalchemy import and_, func
-from datetime import datetime, timedelta
 from . import db
 from .models import ConfigList, Colaborador
 
@@ -710,9 +712,30 @@ def painel_grafico(planilha=None):
         setor_labels = [r.setor for r in setor_rows]
         setor_series = [int(r.qtd or 0) for r in setor_rows]
 
+        # Agregação simples por tipo (contagem total sem distinct)
+        q_tipo_resumo = db.session.query(
+            Colaborador.tipo.label('tipo'),
+            func.count(Colaborador.matricula).label('qtd')
+        )
+        if sel_min:
+            q_tipo_resumo = q_tipo_resumo.filter(Colaborador.data >= sel_min)
+        if sel_max:
+            q_tipo_resumo = q_tipo_resumo.filter(Colaborador.data <= sel_max)
+        if selected_turno and selected_turno != 'all':
+            q_tipo_resumo = q_tipo_resumo.filter(Colaborador.turno == selected_turno)
+        q_tipo_resumo = (
+            q_tipo_resumo
+            .filter(Colaborador.tipo.isnot(None))
+            .group_by(Colaborador.tipo)
+            .order_by(func.count(Colaborador.matricula).desc())
+        )
+        tipo_rows = q_tipo_resumo.all()
+        tipo_labels = [r.tipo for r in tipo_rows]
+        tipo_series = [int(r.qtd or 0) for r in tipo_rows]
+
         q_turno = db.session.query(
             Colaborador.turno.label('turno'),
-            func.count(func.distinct(Colaborador.matricula)).label('qtd')
+            func.count(Colaborador.matricula).label('qtd')
         )
         if sel_min:
             q_turno = q_turno.filter(Colaborador.data >= sel_min)
@@ -720,45 +743,31 @@ def painel_grafico(planilha=None):
             q_turno = q_turno.filter(Colaborador.data <= sel_max)
         if selected_turno and selected_turno != 'all':
             q_turno = q_turno.filter(Colaborador.turno == selected_turno)
-        q_turno = q_turno.filter(Colaborador.turno.isnot(None)).group_by(Colaborador.turno).order_by(func.count(func.distinct(Colaborador.matricula)).desc())
+        q_turno = q_turno.filter(Colaborador.turno.isnot(None)).group_by(Colaborador.turno).order_by(func.count(Colaborador.matricula).desc())
         turno_rows = q_turno.all()
         turno_labels = [r.turno for r in turno_rows]
         turno_series = [int(r.qtd or 0) for r in turno_rows]
 
-        # Agregação empilhada: por Tipo (séries) ao longo dos Setores (categorias), contando matrículas distintas
-        q_tipo_stack = db.session.query(
+        # Agregação simples por setor (contagem total sem distinct para análise de volume)
+        q_setor_total = db.session.query(
             Colaborador.setor.label('setor'),
-            Colaborador.tipo.label('tipo'),
-            func.count(func.distinct(Colaborador.matricula)).label('qtd')
+            func.count(Colaborador.id).label('qtd')
         )
         if sel_min:
-            q_tipo_stack = q_tipo_stack.filter(Colaborador.data >= sel_min)
+            q_setor_total = q_setor_total.filter(Colaborador.data >= sel_min)
         if sel_max:
-            q_tipo_stack = q_tipo_stack.filter(Colaborador.data <= sel_max)
+            q_setor_total = q_setor_total.filter(Colaborador.data <= sel_max)
         if selected_turno and selected_turno != 'all':
-            q_tipo_stack = q_tipo_stack.filter(Colaborador.turno == selected_turno)
-        q_tipo_stack = (
-            q_tipo_stack
+            q_setor_total = q_setor_total.filter(Colaborador.turno == selected_turno)
+        q_setor_total = (
+            q_setor_total
             .filter(Colaborador.setor.isnot(None))
-            .filter(Colaborador.tipo.isnot(None))
-            .group_by(Colaborador.setor, Colaborador.tipo)
+            .group_by(Colaborador.setor)
+            .order_by(func.count(Colaborador.id).desc())
         )
-        rows_stack = q_tipo_stack.all()
-        # Categorias: reaproveitar ordem de setores já calculada
-        stacked_categories = setor_labels[:]
-        # Construir séries por tipo
-        from collections import defaultdict
-        tmp = defaultdict(dict)  # tipo -> {setor: qtd}
-        for r in rows_stack:
-            tmp[r.tipo][r.setor] = int(r.qtd or 0)
-        tipos_ordenados = sorted(tmp.keys())
-        stacked_series = [
-            {
-                'name': tipo,
-                'data': [tmp[tipo].get(cat, 0) for cat in stacked_categories]
-            }
-            for tipo in tipos_ordenados
-        ]
+        setor_total_rows = q_setor_total.all()
+        stacked_categories = [r.setor for r in setor_total_rows]
+        stacked_series = [int(r.qtd or 0) for r in setor_total_rows]
         min_data = db.session.query(func.min(Colaborador.data))
         max_data = db.session.query(func.max(Colaborador.data))
         if sel_min:
@@ -827,10 +836,117 @@ def painel_grafico(planilha=None):
         timeline_data = []
         setor_labels = []
         setor_series = []
+        tipo_labels = []
+        tipo_series = []
         turno_labels = []
         turno_series = []
         stacked_categories = []
         stacked_series = []
+
+    input_table_columns = [
+        "Do Endereço",
+        "Funcionário",
+        "Nome",
+        "Data",
+        "Execução por Voz"
+    ]
+    input_table_rows = []
+    input_table_total = 0
+    input_table_page_size = 10
+    input_table_page = request.args.get('input_page', default=1, type=int) or 1
+    input_table_page = max(1, input_table_page)
+    input_table_pages = 0
+    input_table_has_data = False
+    input_table_pagination = None
+    input_table_range_start = 0
+    input_table_range_end = 0
+
+    try:
+        source_df = last_planilha
+    except NameError:
+        source_df = None
+
+    if source_df is not None:
+        try:
+            df_input = source_df.copy()
+            missing_cols = [col for col in input_table_columns if col not in df_input.columns]
+            if not missing_cols:
+                df_input = df_input[input_table_columns].copy()
+                df_input = df_input.fillna('')
+                input_table_total = len(df_input)
+                if input_table_total > 0:
+                    input_table_has_data = True
+                    input_table_pages = max(1, math.ceil(input_table_total / input_table_page_size))
+                    if input_table_page > input_table_pages:
+                        input_table_page = input_table_pages
+                    start = (input_table_page - 1) * input_table_page_size
+                    end = start + input_table_page_size
+                    page_df = df_input.iloc[start:end]
+                    input_table_range_start = start + 1
+                    input_table_range_end = min(end, input_table_total)
+                    input_table_rows = []
+                    for row in page_df.itertuples(index=False, name=None):
+                        formatted = {}
+                        for col, value in zip(input_table_columns, row):
+                            cell = value
+                            if cell is None:
+                                text = ''
+                            elif isinstance(cell, (int, float)):
+                                if isinstance(cell, float) and math.isnan(cell):
+                                    text = ''
+                                elif isinstance(cell, float) and cell.is_integer():
+                                    text = str(int(cell))
+                                else:
+                                    text = str(cell)
+                            elif hasattr(cell, 'strftime'):
+                                try:
+                                    text = cell.strftime('%d/%m/%Y')
+                                except Exception:
+                                    text = str(cell)
+                            else:
+                                text = str(cell)
+                            formatted[col] = text
+                        input_table_rows.append(formatted)
+
+                    preserved_args = {
+                        k: v for k, v in request.args.to_dict(flat=True).items()
+                        if v not in (None, '')
+                    }
+                    preserved_args.pop('input_page', None)
+                    preserved_args['tab'] = 'input'
+                    window = 2
+                    start_page = max(1, input_table_page - window)
+                    end_page = min(input_table_pages, input_table_page + window)
+
+                    page_links = []
+                    for p in range(start_page, end_page + 1):
+                        args = {**preserved_args, 'input_page': p}
+                        page_links.append({
+                            'page': p,
+                            'url': url_for('main.painel_grafico', **args),
+                            'active': p == input_table_page
+                        })
+
+                    input_table_pagination = {
+                        'page': input_table_page,
+                        'pages': input_table_pages,
+                        'total': input_table_total,
+                        'has_prev': input_table_page > 1,
+                        'has_next': input_table_page < input_table_pages,
+                        'prev_url': url_for(
+                            'main.painel_grafico',
+                            **{**preserved_args, 'input_page': input_table_page - 1}
+                        ) if input_table_page > 1 else None,
+                        'next_url': url_for(
+                            'main.painel_grafico',
+                            **{**preserved_args, 'input_page': input_table_page + 1}
+                        ) if input_table_page < input_table_pages else None,
+                        'page_links': page_links
+                    }
+            else:
+                current_app.logger.warning('Planilha Input*Dados ignorada por colunas ausentes: %s', missing_cols)
+        except Exception as e:
+            current_app.logger.exception('Falha ao preparar dados do Input*Dados: %s', e)
 
     return render_template(
         'painel_grafico.html',
@@ -844,6 +960,8 @@ def painel_grafico(planilha=None):
         today_str=today_str,
         setor_labels=setor_labels,
         setor_series=setor_series,
+        tipo_labels=tipo_labels,
+        tipo_series=tipo_series,
         turno_labels=turno_labels,
         turno_series=turno_series,
         stacked_categories=stacked_categories,
@@ -857,4 +975,14 @@ def painel_grafico(planilha=None):
         selected_setor=selected_setor,
         selected_tipo=selected_tipo,
         selected_supervisor=selected_supervisor,
+        input_table_columns=input_table_columns,
+        input_table_rows=input_table_rows,
+        input_table_total=input_table_total,
+        input_table_page=input_table_page,
+        input_table_pages=input_table_pages,
+        input_table_page_size=input_table_page_size,
+        input_table_has_data=input_table_has_data,
+        input_table_pagination=input_table_pagination,
+        input_table_range_start=input_table_range_start,
+        input_table_range_end=input_table_range_end,
     )
