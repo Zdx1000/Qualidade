@@ -1,6 +1,7 @@
 // Painel Gráfico - versão Chart.js
 (function () {
-  window.AppPanel = window.AppPanel || { charts: {}, mounted: false, tabsBound: false };
+  window.AppPanel = window.AppPanel || { charts: {}, mounted: false, tabsBound: false, mergeMounted: false };
+  window.AppPanel.mergeMounted = window.AppPanel.mergeMounted || false;
 
   function readJson(id, fallback) {
     const el = document.getElementById(id);
@@ -21,7 +22,10 @@
   const TURNO_SERIES = readJson('data-turno-series', []);
   const STACKED_CATEGORIES = readJson('data-stacked-categories', []);
   const STACKED_SERIES = readJson('data-stacked-series', []);
+  const maxVal = Math.max(0, ...TIPO_SERIES);
+  const maxIndex = TIPO_SERIES.findIndex((value) => value === maxVal);
   const TIMELINE = readJson('data-timeline', []);
+  const MERGE_COLAB_PERCENT = readJson('data-merge-colab-percent', null);
   const AVAILABLE_SETORES = readJson('data-available-setores', []);
   const AVAILABLE_TIPOS = readJson('data-available-tipos', []);
   const AVAILABLE_SUPERVISORES = readJson('data-available-supervisores', []);
@@ -349,6 +353,7 @@
       }
     });
     window.AppPanel.charts = {};
+    window.AppPanel.mergeMounted = false;
   }
 
   function renderTipoChart(ctx, palette, mode) {
@@ -1152,6 +1157,120 @@
     return new Chart(ctx, chartConfig);
   }
 
+  function renderMergeColabPercent(ctx, palette, mode) {
+    const container = ctx?.canvas?.closest('.chart-wrapper');
+    if (!MERGE_COLAB_PERCENT || !Array.isArray(MERGE_COLAB_PERCENT.values)) {
+      if (container) {
+        container.innerHTML = '<div class="text-muted text-center py-5">Nenhum dado disponível para calcular percentual de treinamento.</div>';
+      }
+      return null;
+    }
+
+    const labels = Array.isArray(MERGE_COLAB_PERCENT.labels) && MERGE_COLAB_PERCENT.labels.length
+      ? MERGE_COLAB_PERCENT.labels
+      : ['Com execução por Voz', 'Sem execução por Voz'];
+    const rawValues = MERGE_COLAB_PERCENT.values.map((value) => Number.parseFloat(value) || 0);
+    const total = rawValues.reduce((sum, value) => sum + Math.max(0, value), 0);
+
+    if (!total) {
+      if (container) {
+        container.innerHTML = '<div class="text-muted text-center py-5">Nenhum colaborador treinado encontrado na planilha recente.</div>';
+      }
+      return null;
+    }
+
+    const basePalette = palette && palette.length ? palette : buildPalette(4, null, mode);
+    const colors = [
+      basePalette[0] || '#2563eb',
+      basePalette[1] || adjustColor(basePalette[0] || '#2563eb', mode === 'dark' ? -0.2 : 0.2)
+    ];
+    const borderColors = colors.map((color) => adjustColor(color, mode === 'dark' ? -0.35 : -0.25));
+    const legendColor = mode === 'dark' ? '#cbd5f5' : '#1f2937';
+
+    return new Chart(ctx, {
+      type: 'pie',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: '% Colaboradores Treinados',
+            data: rawValues,
+            backgroundColor: colors,
+            borderColor: borderColors,
+            borderWidth: 1.5,
+            hoverOffset: 8
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: 'bottom',
+            labels: {
+              color: legendColor,
+              padding: 18,
+              usePointStyle: true
+            }
+          },
+          tooltip: {
+            callbacks: {
+              label: (context) => {
+                const value = context.parsed || 0;
+                const perc = total > 0 ? ((value / total) * 100).toFixed(1) : '0.0';
+                return `${context.label}: ${value.toLocaleString('pt-BR')} (${perc}%)`;
+              }
+            }
+          },
+          datalabels: {
+            color: (context) => getReadableTextColor(colors[context.dataIndex] || '#2563eb'),
+            font: {
+              weight: '700',
+              size: 12
+            },
+            formatter: (value) => {
+              const perc = total > 0 ? (value / total) * 100 : 0;
+              return perc >= 4 ? `${perc.toFixed(1)}%` : '';
+            }
+          }
+        }
+      }
+    });
+  }
+
+  function mountMergeCharts(force = false) {
+    if (!ensureChartSetup()) return;
+    const canvas = document.getElementById('chart-merge-colab-percent');
+    if (!canvas) return;
+    if (window.AppPanel.mergeMounted && !force) return;
+
+    const mode = document.documentElement.dataset.bsTheme === 'dark' ? 'dark' : 'light';
+    const paletteBase = [
+      getCssVar('--accent-color', '#3498db'),
+      getCssVar('--accent-hover', '#2980b9'),
+      getCssVar('--success-color', '#27ae60'),
+      getCssVar('--warning-color', '#f39c12')
+    ];
+    const palette = buildPalette(4, paletteBase, mode);
+
+    if (window.AppPanel.charts.mergeColabPercent) {
+      try {
+        window.AppPanel.charts.mergeColabPercent.destroy();
+      } catch (err) {
+        console.warn('Falha ao destruir gráfico de percentual de treinamento', err);
+      }
+      delete window.AppPanel.charts.mergeColabPercent;
+    }
+
+    const chart = renderMergeColabPercent(canvas.getContext('2d'), palette, mode);
+    if (chart) {
+      window.AppPanel.charts.mergeColabPercent = chart;
+    }
+
+    window.AppPanel.mergeMounted = true;
+  }
+
   function mountCharts() {
     if (!ensureChartSetup()) return;
 
@@ -1378,6 +1497,10 @@
         const newUrl = `${window.location.pathname}${queryString ? `?${queryString}` : ''}${hash}`;
         window.history.replaceState({}, '', newUrl);
       }
+
+      if (selector === '#tab-merge') {
+        mountMergeCharts();
+      }
     };
 
     buttons.forEach((btn) => {
@@ -1406,5 +1529,8 @@
   document.addEventListener('DOMContentLoaded', () => {
     setupTabs();
     mountCharts();
+    if (window.location.hash === '#tab-merge' || new URLSearchParams(window.location.search).get('tab') === 'merge') {
+      mountMergeCharts();
+    }
   });
 })();

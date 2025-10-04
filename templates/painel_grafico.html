@@ -130,6 +130,7 @@
                     <th><i class="bi bi-person me-1"></i>Nome</th>
                     <th style="width: 140px;"><i class="bi bi-calendar-event me-1"></i>Data</th>
                     <th><i class="bi bi-mic me-1"></i>Execução por Voz</th>
+                    <th style="width: 150px;"><i class="bi bi-mortarboard me-1"></i>Treinado</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -164,10 +165,17 @@
                         <span class="badge bg-secondary bg-opacity-10 text-secondary">Não informado</span>
                       {% endif %}
                     </td>
+                    <td>
+                      {% if row["Treinado"] == 'Sim' %}
+                        <span class="badge bg-success bg-opacity-10 text-success"><i class="bi bi-check2-circle me-1"></i>Sim</span>
+                      {% else %}
+                        <span class="badge bg-warning bg-opacity-10 text-warning"><i class="bi bi-x-circle me-1"></i>Não</span>
+                      {% endif %}
+                    </td>
                   </tr>
                   {% else %}
                   <tr>
-                    <td colspan="5" class="text-center py-5">
+                    <td colspan="6" class="text-center py-5">
                       <div class="text-muted">
                         <i class="bi bi-inbox" style="font-size: 3rem;"></i>
                         <div class="mt-2">
@@ -223,9 +231,104 @@
     </div>
 
     <div id="tab-merge" class="d-none">
-      <div class="alert alert-warning d-flex align-items-center" role="alert">
-        <i class="bi bi-tools me-2"></i>
-        Registros x Input*Dados — em andamento.
+      <div class="alert alert-warning d-flex align-items-center justify-content-between flex-column flex-md-row gap-2" role="alert">
+        <div class="d-flex align-items-center gap-2">
+          <i class="bi bi-tools fs-5"></i>
+          <div>
+            <strong>Registros x Input*Dados</strong>
+            <div class="small text-muted">Dashboard comparativo — estrutura inicial dos cards pronta para receber dados.</div>
+          </div>
+        </div>
+        <span class="badge bg-warning bg-opacity-10 text-warning" style="font-size: 0.75rem;">Fase de wireframe</span>
+      </div>
+
+      <div class="row g-3 mt-1" id="merge-graficos">
+        <div class="col-12 col-xxl-4">
+          <div class="card h-100 shadow-sm">
+            <div class="card-header d-flex align-items-center justify-content-between">
+              <div class="d-flex align-items-center gap-2">
+                <i class="bi bi-pie-chart fs-5 text-primary"></i>
+                <h6 class="mb-0">% Colaboradores Treinados</h6>
+              </div>
+              <span class="badge bg-primary bg-opacity-10 text-primary" style="font-size: 0.7rem; font-weight: 600;">Pie</span>
+            </div>
+            <div class="card-body">
+              <div class="chart-wrapper" style="height: 320px;">
+                <canvas id="chart-merge-colab-percent"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-12 col-xxl-4">
+          <div class="card h-100 shadow-sm">
+            <div class="card-header d-flex align-items-center justify-content-between">
+              <div class="d-flex align-items-center gap-2">
+                <i class="bi bi-bar-chart-line fs-5 text-success"></i>
+                <h6 class="mb-0">HC de Treinamento</h6>
+              </div>
+              <span class="badge bg-success bg-opacity-10 text-success" style="font-size: 0.7rem; font-weight: 600;">Bar</span>
+            </div>
+            <div class="card-body">
+              <div class="chart-wrapper" style="height: 320px;">
+                <canvas id="chart-merge-hc"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-12 col-xxl-4">
+          <div class="card h-100 shadow-sm">
+            <div class="card-header d-flex align-items-center justify-content-between">
+              <div class="d-flex align-items-center gap-2">
+                <i class="bi bi-person-lines-fill fs-5 text-info"></i>
+                <h6 class="mb-0">Colaboradores Treinados</h6>
+              </div>
+              <span class="badge bg-info bg-opacity-10 text-info" style="font-size: 0.7rem; font-weight: 600;">Bar</span>
+            </div>
+            <div class="card-body">
+              <div class="chart-wrapper" style="height: 320px;">
+                <canvas id="chart-merge-colab"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row g-3 mt-1">
+        <div class="col-12 col-xxl-6">
+          <div class="card h-100 shadow-sm">
+            <div class="card-header d-flex align-items-center justify-content-between">
+              <div class="d-flex align-items-center gap-2">
+                <i class="bi bi-graph-up-arrow fs-5 text-warning"></i>
+                <h6 class="mb-0">Utilização vs Treinamento 1° Turno</h6>
+              </div>
+              <span class="badge bg-warning bg-opacity-10 text-warning" style="font-size: 0.7rem; font-weight: 600;">Bar</span>
+            </div>
+            <div class="card-body">
+              <div class="chart-wrapper" style="height: 360px;">
+                <canvas id="chart-merge-turno1"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-12 col-xxl-6">
+          <div class="card h-100 shadow-sm">
+            <div class="card-header d-flex align-items-center justify-content-between">
+              <div class="d-flex align-items-center gap-2">
+                <i class="bi bi-graph-up fs-5 text-danger"></i>
+                <h6 class="mb-0">Utilização vs Treinamento 2° Turno</h6>
+              </div>
+              <span class="badge bg-danger bg-opacity-10 text-danger" style="font-size: 0.7rem; font-weight: 600;">Bar</span>
+            </div>
+            <div class="card-body">
+              <div class="chart-wrapper" style="height: 360px;">
+                <canvas id="chart-merge-turno2"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -326,6 +429,7 @@
   <script id="data-stacked-categories" type="application/json">{{ stacked_categories|tojson }}</script>
   <script id="data-stacked-series" type="application/json">{{ stacked_series|tojson }}</script>
   <script id="data-timeline" type="application/json">{{ timeline_data|tojson }}</script>
+  <script id="data-merge-colab-percent" type="application/json">{{ merge_colab_percent|tojson }}</script>
   <!-- Listas e selecionados para filtros da timeline -->
   <script id="data-available-setores" type="application/json">{{ available_setores|tojson }}</script>
   <script id="data-available-tipos" type="application/json">{{ available_tipos|tojson }}</script>

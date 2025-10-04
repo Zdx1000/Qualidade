@@ -1,4 +1,5 @@
 import math
+import re
 from datetime import datetime, timedelta
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, send_file, current_app
@@ -582,9 +583,41 @@ def input_dados():
             if file.filename.startswith("Rastreabilidade_Tra"):
                 try:
                     df_listColomns = ["Do Endereço", "Funcionário", "Nome", "Data", "Execução por Voz"]
-                    df = df[df_listColomns]
+                    df = df[df_listColomns].copy()
                     df["MOD"] = df["Do Endereço"].fillna("").astype(str).str[:1]
-                    flash(f'Arquivo de rastreabilidade detectado. Linhas: Columns {df_listColomns} | MOD Adicionado', 'info')
+
+                    existing_matriculas = set()
+                    for (value,) in (
+                        db.session.query(Colaborador.matricula)
+                        .filter(Colaborador.matricula.isnot(None))
+                        .all()
+                    ):
+                        if value is None:
+                            continue
+                        try:
+                            existing_matriculas.add(int(value))
+                        except (TypeError, ValueError):
+                            continue
+
+                    def resolve_matricula(raw):
+                        if pd.isna(raw):
+                            return None
+                        try:
+                            text = str(raw).strip()
+                            if not text:
+                                return None
+                            numeric = int(float(text))
+                        except (ValueError, TypeError):
+                            return None
+                        return numeric
+
+                    def flag_treinado(raw):
+                        matricula = resolve_matricula(raw)
+                        return 'Sim' if matricula is not None and matricula in existing_matriculas else 'Não'
+
+                    df['Treinado'] = df['Funcionário'].apply(flag_treinado)
+
+                    flash(f'Arquivo de rastreabilidade detectado. Linhas: Columns {df_listColomns} | MOD e Treinado adicionados', 'info')
 
                     global last_planilha
                     planilha = df.copy()
@@ -848,7 +881,8 @@ def painel_grafico(planilha=None):
         "Funcionário",
         "Nome",
         "Data",
-        "Execução por Voz"
+        "Execução por Voz",
+        "Treinado"
     ]
     input_table_rows = []
     input_table_total = 0
@@ -860,6 +894,7 @@ def painel_grafico(planilha=None):
     input_table_pagination = None
     input_table_range_start = 0
     input_table_range_end = 0
+    merge_colab_percent = None
 
     try:
         source_df = last_planilha
@@ -870,81 +905,119 @@ def painel_grafico(planilha=None):
         try:
             df_input = source_df.copy()
             missing_cols = [col for col in input_table_columns if col not in df_input.columns]
-            if not missing_cols:
-                df_input = df_input[input_table_columns].copy()
-                df_input = df_input.fillna('')
-                input_table_total = len(df_input)
-                if input_table_total > 0:
-                    input_table_has_data = True
-                    input_table_pages = max(1, math.ceil(input_table_total / input_table_page_size))
-                    if input_table_page > input_table_pages:
-                        input_table_page = input_table_pages
-                    start = (input_table_page - 1) * input_table_page_size
-                    end = start + input_table_page_size
-                    page_df = df_input.iloc[start:end]
-                    input_table_range_start = start + 1
-                    input_table_range_end = min(end, input_table_total)
-                    input_table_rows = []
-                    for row in page_df.itertuples(index=False, name=None):
-                        formatted = {}
-                        for col, value in zip(input_table_columns, row):
-                            cell = value
-                            if cell is None:
+            if missing_cols:
+                current_app.logger.warning('Planilha Input*Dados ajustada por colunas ausentes: %s', missing_cols)
+                for col in missing_cols:
+                    default_value = 'Não' if col == 'Treinado' else ''
+                    df_input[col] = default_value
+            df_input = df_input[input_table_columns].copy()
+            df_input = df_input.fillna('')
+            input_table_total = len(df_input)
+            if input_table_total > 0:
+                input_table_has_data = True
+                input_table_pages = max(1, math.ceil(input_table_total / input_table_page_size))
+                if input_table_page > input_table_pages:
+                    input_table_page = input_table_pages
+                start = (input_table_page - 1) * input_table_page_size
+                end = start + input_table_page_size
+                page_df = df_input.iloc[start:end]
+                input_table_range_start = start + 1
+                input_table_range_end = min(end, input_table_total)
+                input_table_rows = []
+                for row in page_df.itertuples(index=False, name=None):
+                    formatted = {}
+                    for col, value in zip(input_table_columns, row):
+                        cell = value
+                        if cell is None:
+                            text = ''
+                        elif isinstance(cell, (int, float)):
+                            if isinstance(cell, float) and math.isnan(cell):
                                 text = ''
-                            elif isinstance(cell, (int, float)):
-                                if isinstance(cell, float) and math.isnan(cell):
-                                    text = ''
-                                elif isinstance(cell, float) and cell.is_integer():
-                                    text = str(int(cell))
-                                else:
-                                    text = str(cell)
-                            elif hasattr(cell, 'strftime'):
-                                try:
-                                    text = cell.strftime('%d/%m/%Y')
-                                except Exception:
-                                    text = str(cell)
+                            elif isinstance(cell, float) and cell.is_integer():
+                                text = str(int(cell))
                             else:
                                 text = str(cell)
-                            formatted[col] = text
-                        input_table_rows.append(formatted)
+                        elif hasattr(cell, 'strftime'):
+                            try:
+                                text = cell.strftime('%d/%m/%Y')
+                            except Exception:
+                                text = str(cell)
+                        else:
+                            text = str(cell)
+                        formatted[col] = text
+                    input_table_rows.append(formatted)
 
-                    preserved_args = {
-                        k: v for k, v in request.args.to_dict(flat=True).items()
-                        if v not in (None, '')
-                    }
-                    preserved_args.pop('input_page', None)
-                    preserved_args['tab'] = 'input'
-                    window = 2
-                    start_page = max(1, input_table_page - window)
-                    end_page = min(input_table_pages, input_table_page + window)
+                trained_mask = df_input["Treinado"].astype(str).str.strip().str.lower() == 'sim'
+                trained_df = df_input[trained_mask].copy()
 
-                    page_links = []
-                    for p in range(start_page, end_page + 1):
-                        args = {**preserved_args, 'input_page': p}
-                        page_links.append({
-                            'page': p,
-                            'url': url_for('main.painel_grafico', **args),
-                            'active': p == input_table_page
-                        })
+                trained_exec_count = 0
+                trained_total = len(trained_df)
 
-                    input_table_pagination = {
-                        'page': input_table_page,
-                        'pages': input_table_pages,
-                        'total': input_table_total,
-                        'has_prev': input_table_page > 1,
-                        'has_next': input_table_page < input_table_pages,
-                        'prev_url': url_for(
-                            'main.painel_grafico',
-                            **{**preserved_args, 'input_page': input_table_page - 1}
-                        ) if input_table_page > 1 else None,
-                        'next_url': url_for(
-                            'main.painel_grafico',
-                            **{**preserved_args, 'input_page': input_table_page + 1}
-                        ) if input_table_page < input_table_pages else None,
-                        'page_links': page_links
-                    }
-            else:
-                current_app.logger.warning('Planilha Input*Dados ignorada por colunas ausentes: %s', missing_cols)
+                if trained_total:
+                    try:
+                        execution_series = trained_df["Execução por Voz"].astype(str).map(lambda v: v.strip())
+                    except Exception:
+                        execution_series = trained_df["Execução por Voz"].astype(str)
+
+                    negative_pattern = re.compile(r"\b(n[aã]o|pendente|aguard|sem|falta)\b", re.IGNORECASE)
+
+                    for value in execution_series:
+                        if not value or value.lower() in {"", "nan", "none", "0"}:
+                            continue
+                        if negative_pattern.search(value.lower()):
+                            continue
+                        trained_exec_count += 1
+
+                trained_no_exec_count = max(0, trained_total - trained_exec_count)
+                total_count = trained_exec_count + trained_no_exec_count
+                if total_count > 0:
+                    trained_pct = round((trained_exec_count / total_count) * 100, 2)
+                    untrained_pct = round((trained_no_exec_count / total_count) * 100, 2)
+                else:
+                    trained_pct = untrained_pct = 0.0
+
+                merge_colab_percent = {
+                    "labels": ["Com execução por Voz", "Sem execução por Voz"],
+                    "values": [trained_exec_count, trained_no_exec_count],
+                    "percentages": [trained_pct, untrained_pct],
+                    "total": total_count
+                }
+
+                preserved_args = {
+                    k: v for k, v in request.args.to_dict(flat=True).items()
+                    if v not in (None, '')
+                }
+                preserved_args.pop('input_page', None)
+                preserved_args['tab'] = 'input'
+                window = 2
+                start_page = max(1, input_table_page - window)
+                end_page = min(input_table_pages, input_table_page + window)
+
+                page_links = []
+                for p in range(start_page, end_page + 1):
+                    args = {**preserved_args, 'input_page': p}
+                    page_links.append({
+                        'page': p,
+                        'url': url_for('main.painel_grafico', **args),
+                        'active': p == input_table_page
+                    })
+
+                input_table_pagination = {
+                    'page': input_table_page,
+                    'pages': input_table_pages,
+                    'total': input_table_total,
+                    'has_prev': input_table_page > 1,
+                    'has_next': input_table_page < input_table_pages,
+                    'prev_url': url_for(
+                        'main.painel_grafico',
+                        **{**preserved_args, 'input_page': input_table_page - 1}
+                    ) if input_table_page > 1 else None,
+                    'next_url': url_for(
+                        'main.painel_grafico',
+                        **{**preserved_args, 'input_page': input_table_page + 1}
+                    ) if input_table_page < input_table_pages else None,
+                    'page_links': page_links
+                }
         except Exception as e:
             current_app.logger.exception('Falha ao preparar dados do Input*Dados: %s', e)
 
@@ -985,4 +1058,5 @@ def painel_grafico(planilha=None):
         input_table_pagination=input_table_pagination,
         input_table_range_start=input_table_range_start,
         input_table_range_end=input_table_range_end,
+        merge_colab_percent=merge_colab_percent,
     )
