@@ -1758,19 +1758,109 @@
       });
     };
 
+    const selectFilter = (filterKey, shouldUpdateUrl = false) => {
+      let target = filterButtons.find((btn) => btn.getAttribute('data-input-filter') === filterKey);
+      if (!target) {
+        target = filterButtons.find((btn) => btn.classList.contains('active')) || filterButtons[0];
+      }
+      if (!target) return;
+
+      filterButtons.forEach((btn) => {
+        const isActive = btn === target;
+        btn.classList.toggle('active', isActive);
+        btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+      });
+
+      const selectedFilter = target.getAttribute('data-input-filter');
+      activate(selectedFilter);
+
+      if (shouldUpdateUrl) {
+        const params = new URLSearchParams(window.location.search);
+        if (selectedFilter === 'separacao') {
+          params.delete('input_filter');
+          params.delete('hc_page');
+        } else {
+          params.set('input_filter', selectedFilter);
+          if (selectedFilter !== 'hc') {
+            params.delete('hc_page');
+          }
+        }
+        const queryString = params.toString();
+        const newUrl = `${window.location.pathname}${queryString ? `?${queryString}` : ''}${window.location.hash}`;
+        window.history.replaceState({}, '', newUrl);
+      }
+    };
+
     filterButtons.forEach((btn) => {
       btn.addEventListener('click', () => {
-        filterButtons.forEach((other) => other.classList.remove('active'));
-        btn.classList.add('active');
-        activate(btn.getAttribute('data-input-filter'));
+        selectFilter(btn.getAttribute('data-input-filter'), true);
       });
     });
 
-    const initial = filterButtons.find((btn) => btn.classList.contains('active')) || filterButtons[0];
-    if (initial) {
-      initial.classList.add('active');
-      activate(initial.getAttribute('data-input-filter'));
-    }
+    const params = new URLSearchParams(window.location.search);
+    const requestedFilter = params.get('input_filter');
+    selectFilter(requestedFilter, false);
+  }
+
+  function setupTableControls() {
+    const forms = Array.from(document.querySelectorAll('[data-table-control-form]'));
+    if (!forms.length) return;
+
+    forms.forEach((form) => {
+      if (!form.id) return;
+      const formId = form.id;
+      const defaultSortField = form.dataset.sortField || 'sort';
+      const defaultOrderField = form.dataset.orderField || 'order';
+      const defaultPageField = form.dataset.pageField || 'page';
+
+      const resetPage = () => {
+        const pageInput = form.querySelector(`[name="${defaultPageField}"]`);
+        if (pageInput) {
+          pageInput.value = '1';
+        }
+      };
+
+      let debounceHandle = null;
+      const submitWithDebounce = () => {
+        if (debounceHandle) {
+          clearTimeout(debounceHandle);
+        }
+        debounceHandle = setTimeout(() => {
+          resetPage();
+          form.submit();
+        }, 250);
+      };
+
+      const filterInputs = Array.from(document.querySelectorAll(`[data-table-filter="${formId}"]`));
+      filterInputs.forEach((input) => {
+        input.addEventListener('input', submitWithDebounce);
+      });
+
+      const sortButtons = Array.from(document.querySelectorAll(`[data-table-sort="${formId}"]`));
+      sortButtons.forEach((button) => {
+        button.addEventListener('click', (event) => {
+          event.preventDefault();
+          const sortColumn = button.dataset.sortColumn;
+          if (!sortColumn) return;
+          const sortField = button.dataset.sortField || defaultSortField;
+          const orderField = button.dataset.orderField || defaultOrderField;
+          const pageField = button.dataset.pageField || defaultPageField;
+          const sortInput = form.querySelector(`[name="${sortField}"]`);
+          const orderInput = form.querySelector(`[name="${orderField}"]`);
+          const pageInput = form.querySelector(`[name="${pageField}"]`);
+          if (sortInput) {
+            sortInput.value = sortColumn;
+          }
+          if (orderInput) {
+            orderInput.value = button.dataset.sortOrder === 'desc' ? 'desc' : 'asc';
+          }
+          if (pageInput) {
+            pageInput.value = '1';
+          }
+          form.submit();
+        });
+      });
+    });
   }
 
   function setupTabs() {
@@ -1852,6 +1942,7 @@
     setupTabs();
     mountCharts();
     setupInputFilters();
+    setupTableControls();
     if (window.location.hash === '#tab-merge' || new URLSearchParams(window.location.search).get('tab') === 'merge') {
       mountMergeCharts();
     }

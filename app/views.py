@@ -1,6 +1,8 @@
 import importlib
 import math
 import re
+import unicodedata
+import pandas as pd
 from pathlib import Path
 from datetime import datetime, timedelta
 
@@ -1028,14 +1030,48 @@ def painel_grafico(planilha=None):
         stacked_categories = []
         stacked_series = []
 
-    input_table_columns = [
-        "Do Endereço",
-        "Funcionário",
-        "Nome",
-        "Data",
-        "Execução por Voz",
-        "Treinado"
+    def slugify_column(label):
+        if label is None:
+            return ''
+        text = str(label)
+        normalized = unicodedata.normalize('NFKD', text)
+        ascii_text = ''.join(ch for ch in normalized if not unicodedata.combining(ch))
+        slug = re.sub(r'[^a-z0-9]+', '_', ascii_text.lower()).strip('_')
+        return slug or 'col'
+
+    def build_query_args(skip_keys=None, overrides=None):
+        skip = set(skip_keys or [])
+        base = {k: v for k, v in request.args.to_dict(flat=True).items() if v not in (None, '') and k not in skip}
+        if overrides:
+            base.update(overrides)
+        return base
+
+    def sort_dataframe(df, column, ascending=True):
+        if column not in df.columns or df.empty:
+            return df
+        series = df[column]
+        numeric_series = pd.to_numeric(series, errors='coerce')
+        if numeric_series.notna().any():
+            sort_key = numeric_series
+        else:
+            datetime_series = pd.to_datetime(series, errors='coerce')
+            if datetime_series.notna().any():
+                sort_key = datetime_series
+            else:
+                sort_key = series.astype(str).str.lower()
+        sorted_df = df.assign(__sort_key=sort_key)
+        sorted_df = sorted_df.sort_values('__sort_key', ascending=ascending, na_position='last', kind='mergesort')
+        return sorted_df.drop(columns='__sort_key')
+
+    input_column_definitions = [
+        {"name": "Do Endereço", "param": "do_endereco", "icon": "geo-alt", "placeholder": "Endereço"},
+        {"name": "Funcionário", "param": "funcionario", "icon": "hash", "placeholder": "Funcionário"},
+        {"name": "Nome", "param": "nome", "icon": "person", "placeholder": "Nome"},
+        {"name": "Data", "param": "data", "icon": "calendar-event", "placeholder": "Data"},
+        {"name": "Execução por Voz", "param": "execucao", "icon": "mic", "placeholder": "Execução"},
+        {"name": "Treinado", "param": "treinado", "icon": "mortarboard", "placeholder": "Treinado"},
     ]
+    input_table_columns = [col["name"] for col in input_column_definitions]
     input_table_rows = []
     input_table_total = 0
     input_table_page_size = 10
@@ -1047,6 +1083,21 @@ def painel_grafico(planilha=None):
     input_table_range_start = 0
     input_table_range_end = 0
     merge_colab_percent = None
+    input_sort = (request.args.get('input_sort') or '').strip()
+    valid_input_sorts = {col['param'] for col in input_column_definitions}
+    if input_sort not in valid_input_sorts:
+        input_sort = ''
+    input_order = (request.args.get('input_order') or 'asc').lower()
+    if input_order not in {'asc', 'desc'}:
+        input_order = 'asc'
+    if not input_sort:
+        input_order = 'asc'
+    input_filters = {}
+    for col in input_column_definitions:
+        value = (request.args.get(f"input_filter_{col['param']}") or '').strip()
+        col['filter_value'] = value
+        if value:
+            input_filters[col['name']] = value
 
     try:
         source_df = last_planilha
@@ -1063,8 +1114,19 @@ def painel_grafico(planilha=None):
                     default_value = 'Não' if col == 'Treinado' else ''
                     df_input[col] = default_value
             df_input = df_input[input_table_columns].copy()
-            df_input = df_input.fillna('')
-            input_table_total = len(df_input)
+            filtered_df = df_input.copy()
+            for col_name, filter_value in input_filters.items():
+                filter_series = filtered_df[col_name].astype(str).fillna('')
+                filtered_df = filtered_df[filter_series.str.contains(filter_value, case=False, na=False)]
+
+            if input_sort:
+                sort_column = next((col['name'] for col in input_column_definitions if col['param'] == input_sort), None)
+                if sort_column:
+                    ascending = input_order == 'asc'
+                    filtered_df = sort_dataframe(filtered_df, sort_column, ascending=ascending)
+
+            display_df = filtered_df.fillna('')
+            input_table_total = len(display_df)
             if input_table_total > 0:
                 input_table_has_data = True
                 input_table_pages = max(1, math.ceil(input_table_total / input_table_page_size))
@@ -1072,7 +1134,7 @@ def painel_grafico(planilha=None):
                     input_table_page = input_table_pages
                 start = (input_table_page - 1) * input_table_page_size
                 end = start + input_table_page_size
-                page_df = df_input.iloc[start:end]
+                page_df = display_df.iloc[start:end]
                 input_table_range_start = start + 1
                 input_table_range_end = min(end, input_table_total)
                 input_table_rows = []
@@ -1089,18 +1151,13 @@ def painel_grafico(planilha=None):
                                 text = str(int(cell))
                             else:
                                 text = str(cell)
-                        elif hasattr(cell, 'strftime'):
-                            try:
-                                text = cell.strftime('%d/%m/%Y')
-                            except Exception:
-                                text = str(cell)
                         else:
                             text = str(cell)
                         formatted[col] = text
                     input_table_rows.append(formatted)
 
-                trained_mask = df_input["Treinado"].astype(str).str.strip().str.lower() == 'sim'
-                trained_df = df_input[trained_mask].copy()
+                trained_mask = display_df["Treinado"].astype(str).str.strip().str.lower() == 'sim'
+                trained_df = display_df[trained_mask].copy()
 
                 trained_exec_count = 0
                 trained_total = len(trained_df)
@@ -1135,12 +1192,8 @@ def painel_grafico(planilha=None):
                     "total": total_count
                 }
 
-                preserved_args = {
-                    k: v for k, v in request.args.to_dict(flat=True).items()
-                    if v not in (None, '')
-                }
+                preserved_args = build_query_args(overrides={'tab': 'input', 'input_filter': 'separacao'})
                 preserved_args.pop('input_page', None)
-                preserved_args['tab'] = 'input'
                 window = 2
                 start_page = max(1, input_table_page - window)
                 end_page = min(input_table_pages, input_table_page + window)
@@ -1173,9 +1226,42 @@ def painel_grafico(planilha=None):
         except Exception as e:
             current_app.logger.exception('Falha ao preparar dados do Input*Dados: %s', e)
 
+    input_column_meta = []
+    input_filter_keys = set()
+    for col in input_column_definitions:
+        input_filter_keys.add(f"input_filter_{col['param']}")
+        input_column_meta.append({
+            'name': col['name'],
+            'param': col['param'],
+            'icon': col['icon'],
+            'placeholder': col.get('placeholder', ''),
+            'filter_value': col.get('filter_value', ''),
+            'is_sorted': input_sort == col['param'],
+            'sort_direction': input_order if input_sort == col['param'] else None,
+        })
+
+    input_form_args = build_query_args(
+        skip_keys={'input_page', 'input_sort', 'input_order'} | input_filter_keys,
+        overrides={'tab': 'input', 'input_filter': 'separacao'}
+    )
+
     hc_merged_rows = []
     hc_merged_columns = []
     hc_preview_info = None
+    hc_table_total = 0
+    hc_table_page_size = 10
+    hc_table_page = request.args.get('hc_page', default=1, type=int) or 1
+    hc_table_page = max(1, hc_table_page)
+    hc_table_pages = 0
+    hc_table_range_start = 0
+    hc_table_range_end = 0
+    hc_table_pagination = None
+    hc_sort = (request.args.get('hc_sort') or '').strip()
+    hc_order = (request.args.get('hc_order') or 'asc').lower()
+    if hc_order not in {'asc', 'desc'}:
+        hc_order = 'asc'
+    hc_column_meta = []
+    hc_slug_to_column = {}
 
     try:
         source_hc = last_planilha_hc
@@ -1184,7 +1270,6 @@ def painel_grafico(planilha=None):
 
     if source_hc is not None:
         try:
-            import pandas as pd
             bind = db.session.get_bind()
             stmt = select(
                 Colaborador.matricula.label("Matrícula"),
@@ -1206,24 +1291,113 @@ def painel_grafico(planilha=None):
                 pass
 
             merged_hc = pd.merge(df_db, source_hc, on='Matrícula', how='left')
+            cargo_hc_column = 'Cargo HC' if 'Cargo HC' in merged_hc.columns else None
+            if cargo_hc_column:
+                with_hc = int(merged_hc[cargo_hc_column].notna().sum())
+                without_hc = int(merged_hc[cargo_hc_column].isna().sum())
+            else:
+                with_hc = 0
+                without_hc = len(merged_hc)
+
             hc_preview_info = {
                 'total': len(merged_hc),
-                'with_hc': int(merged_hc['Cargo HC'].notna().sum()),
-                'without_hc': int(merged_hc['Cargo HC'].isna().sum()),
+                'with_hc': with_hc,
+                'without_hc': without_hc,
             }
 
-            preview_block = merged_hc.head(10).copy()
-            try:
-                preview_block = preview_block.fillna('')
-            except Exception:
-                pass
-            try:
-                hc_merged_rows = preview_block.astype(str).values.tolist()
-            except Exception:
-                hc_merged_rows = preview_block.values.tolist()
-            hc_merged_columns = [str(c) for c in list(preview_block.columns)]
+            slug_counts = {}
+            hc_filters = {}
+            for column in merged_hc.columns:
+                base_slug = slugify_column(column)
+                if base_slug in slug_counts:
+                    slug_counts[base_slug] += 1
+                    slug = f"{base_slug}_{slug_counts[base_slug]}"
+                else:
+                    slug_counts[base_slug] = 1
+                    slug = base_slug
+                hc_slug_to_column[slug] = column
+                value = (request.args.get(f"hc_filter_{slug}") or '').strip()
+                if value:
+                    hc_filters[column] = value
+                hc_column_meta.append({
+                    'name': str(column),
+                    'slug': slug,
+                    'filter_value': value,
+                })
+
+            filtered_hc = merged_hc.copy()
+            for column, value in hc_filters.items():
+                filter_series = filtered_hc[column].astype(str).fillna('')
+                filtered_hc = filtered_hc[filter_series.str.contains(value, case=False, na=False)]
+
+            if hc_sort in hc_slug_to_column:
+                sort_column = hc_slug_to_column[hc_sort]
+                ascending = hc_order == 'asc'
+                filtered_hc = sort_dataframe(filtered_hc, sort_column, ascending=ascending)
+            else:
+                hc_sort = ''
+                hc_order = 'asc'
+
+            display_df = filtered_hc.fillna('')
+            hc_table_total = len(display_df)
+            if hc_table_total > 0:
+                hc_table_pages = max(1, math.ceil(hc_table_total / hc_table_page_size))
+                if hc_table_page > hc_table_pages:
+                    hc_table_page = hc_table_pages
+                start = (hc_table_page - 1) * hc_table_page_size
+                end = start + hc_table_page_size
+                page_df = display_df.iloc[start:end].copy()
+                hc_table_range_start = start + 1
+                hc_table_range_end = min(end, hc_table_total)
+
+                hc_merged_columns = [str(c) for c in list(display_df.columns)]
+                try:
+                    hc_merged_rows = page_df.astype(str).values.tolist()
+                except Exception:
+                    hc_merged_rows = page_df.values.tolist()
+
+                preserved_args = build_query_args(overrides={'tab': 'input', 'input_filter': 'hc'})
+                preserved_args.pop('hc_page', None)
+
+                window = 2
+                start_page = max(1, hc_table_page - window)
+                end_page = min(hc_table_pages, hc_table_page + window)
+
+                page_links = []
+                for p in range(start_page, end_page + 1):
+                    args = {**preserved_args, 'hc_page': p}
+                    page_links.append({
+                        'page': p,
+                        'url': url_for('main.painel_grafico', **args),
+                        'active': p == hc_table_page
+                    })
+
+                hc_table_pagination = {
+                    'page': hc_table_page,
+                    'pages': hc_table_pages,
+                    'total': hc_table_total,
+                    'has_prev': hc_table_page > 1,
+                    'has_next': hc_table_page < hc_table_pages,
+                    'prev_url': url_for('main.painel_grafico', **{**preserved_args, 'hc_page': hc_table_page - 1}) if hc_table_page > 1 else None,
+                    'next_url': url_for('main.painel_grafico', **{**preserved_args, 'hc_page': hc_table_page + 1}) if hc_table_page < hc_table_pages else None,
+                    'page_links': page_links,
+                }
+            else:
+                hc_merged_columns = [str(c) for c in list(display_df.columns)]
         except Exception as e:
             current_app.logger.exception('Falha ao gerar merge HC: %s', e)
+
+    hc_filter_keys = set()
+    for meta in hc_column_meta:
+        slug = meta['slug']
+        hc_filter_keys.add(f"hc_filter_{slug}")
+        meta['is_sorted'] = hc_sort == slug
+        meta['sort_direction'] = hc_order if meta['is_sorted'] else None
+
+    hc_form_args = build_query_args(
+        skip_keys={'hc_page', 'hc_sort', 'hc_order'} | hc_filter_keys,
+        overrides={'tab': 'input', 'input_filter': 'hc'}
+    )
 
     return render_template(
         'painel_grafico.html',
@@ -1263,7 +1437,22 @@ def painel_grafico(planilha=None):
         input_table_range_start=input_table_range_start,
         input_table_range_end=input_table_range_end,
         merge_colab_percent=merge_colab_percent,
+        input_column_meta=input_column_meta,
+        input_sort=input_sort,
+        input_order=input_order,
+        input_form_args=input_form_args,
         hc_merged_columns=hc_merged_columns,
         hc_merged_rows=hc_merged_rows,
         hc_preview_info=hc_preview_info,
+        hc_table_total=hc_table_total,
+        hc_table_page=hc_table_page,
+        hc_table_pages=hc_table_pages,
+        hc_table_page_size=hc_table_page_size,
+        hc_table_pagination=hc_table_pagination,
+        hc_table_range_start=hc_table_range_start,
+        hc_table_range_end=hc_table_range_end,
+        hc_column_meta=hc_column_meta,
+        hc_sort=hc_sort,
+        hc_order=hc_order,
+        hc_form_args=hc_form_args,
     )

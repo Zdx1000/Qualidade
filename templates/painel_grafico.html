@@ -99,7 +99,40 @@
     <!-- Aba Input*Dados: em tratativa -->
     <div id="tab-input" class="d-none">
       <div class="row g-3">
-        <div class="col-12 col-lg-8" data-input-panel="separacao">
+        <div class="col-12">
+          <div class="card shadow-sm" data-input-filter-card>
+            <div class="card-header">
+              <div class="d-flex align-items-center gap-2">
+                <i class="bi bi-funnel"></i>
+                <h6 class="mb-0">Filtrar fonte</h6>
+              </div>
+            </div>
+            <div class="card-body p-0">
+              <div class="input-filter-card-body">
+                <div class="input-filter-toggle-group" role="group" aria-label="Filtrar fonte">
+                  <button type="button" class="btn btn-filter-source active" data-input-filter="separacao" aria-pressed="true">
+                    <span class="input-filter-icon">
+                      <i class="bi bi-geo"></i>
+                    </span>
+                    <span class="input-filter-label">Separação</span>
+                  </button>
+                  <button type="button" class="btn btn-filter-source" data-input-filter="hc" aria-pressed="false">
+                    <span class="input-filter-icon">
+                      <i class="bi bi-file-earmark-person"></i>
+                    </span>
+                    <span class="input-filter-label">HC</span>
+                  </button>
+                </div>
+                <div class="input-filter-hint small text-muted">
+                  <i class="bi bi-info-circle me-1"></i>
+                  Escolha a fonte desejada para detalhar os dados abaixo.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-12" data-input-panel="separacao">
           {% if input_table_has_data %}
           <div class="alert alert-primary d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3" role="alert">
             <div class="d-flex align-items-center gap-2">
@@ -123,16 +156,39 @@
               <span class="badge bg-secondary bg-opacity-10 text-secondary" style="font-size: 0.7rem; font-weight: 600;">Último upload reconhecido</span>
             </div>
             <div class="card-body p-0">
+              <form id="input-table-controls" method="get" class="visually-hidden" data-table-control-form data-sort-field="input_sort" data-order-field="input_order" data-page-field="input_page">
+                {% for key, value in input_form_args.items() %}
+                <input type="hidden" name="{{ key }}" value="{{ value }}">
+                {% endfor %}
+                <input type="hidden" name="input_page" value="{{ input_table_page }}">
+                <input type="hidden" name="input_sort" value="{{ input_sort }}">
+                <input type="hidden" name="input_order" value="{{ input_order }}">
+              </form>
               <div class="table-responsive">
                 <table class="table table-hover align-middle mb-0">
                   <thead class="table-light sticky-top">
                     <tr>
-                      <th><i class="bi bi-geo-alt me-1"></i>Do Endereço</th>
-                      <th style="width: 120px;"><i class="bi bi-hash me-1"></i>Funcionário</th>
-                      <th><i class="bi bi-person me-1"></i>Nome</th>
-                      <th style="width: 140px;"><i class="bi bi-calendar-event me-1"></i>Data</th>
-                      <th><i class="bi bi-mic me-1"></i>Execução por Voz</th>
-                      <th style="width: 150px;"><i class="bi bi-mortarboard me-1"></i>Treinado</th>
+                      {% for col in input_column_meta %}
+                      <th class="align-top">
+                        <div class="d-flex align-items-center justify-content-between gap-2">
+                          <span class="d-flex align-items-center gap-1">
+                            <i class="bi bi-{{ col.icon }} text-secondary"></i>
+                            {{ col.name }}
+                          </span>
+                          <div class="btn-group btn-group-sm" role="group" aria-label="Ordenar {{ col.name }}">
+                            <button type="button" class="btn btn-outline-secondary px-2 py-1 {% if col.is_sorted and col.sort_direction == 'asc' %}active{% endif %}" data-table-sort="input-table-controls" data-sort-column="{{ col.param }}" data-sort-order="asc" data-sort-field="input_sort" data-order-field="input_order" data-page-field="input_page" aria-label="Ordenar {{ col.name }} de forma crescente">
+                              <i class="bi bi-caret-up{% if col.is_sorted and col.sort_direction == 'asc' %}-fill{% endif %}"></i>
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary px-2 py-1 {% if col.is_sorted and col.sort_direction == 'desc' %}active{% endif %}" data-table-sort="input-table-controls" data-sort-column="{{ col.param }}" data-sort-order="desc" data-sort-field="input_sort" data-order-field="input_order" data-page-field="input_page" aria-label="Ordenar {{ col.name }} de forma decrescente">
+                              <i class="bi bi-caret-down{% if col.is_sorted and col.sort_direction == 'desc' %}-fill{% endif %}"></i>
+                            </button>
+                          </div>
+                        </div>
+                        <div class="mt-2">
+                          <input type="text" class="form-control form-control-sm" name="input_filter_{{ col.param }}" value="{{ col.filter_value }}" placeholder="Filtrar {{ col.placeholder or col.name }}" form="input-table-controls" data-table-filter="input-table-controls" data-page-field="input_page">
+                        </div>
+                      </th>
+                      {% endfor %}
                     </tr>
                   </thead>
                   <tbody>
@@ -232,37 +288,29 @@
           {% endif %}
         </div>
 
-        <div class="col-12 col-lg-4">
-          <div class="card h-100 shadow-sm">
-            <div class="card-header">
-              <div class="d-flex align-items-center gap-2">
-                <i class="bi bi-funnel"></i>
-                <h6 class="mb-0">Filtrar fonte</h6>
-              </div>
-            </div>
-            <div class="card-body">
-              <div class="d-flex flex-column gap-2">
-                <button type="button" class="btn btn-outline-primary w-100 active" data-input-filter="separacao">
-                  <i class="bi bi-geo"></i>
-                  Separação
-                </button>
-                <button type="button" class="btn btn-outline-success w-100" data-input-filter="hc">
-                  <i class="bi bi-file-earmark-person"></i>
-                  HC
-                </button>
-              </div>
-              <div class="mt-3 small text-muted">
-                <i class="bi bi-info-circle me-1"></i>
-                Escolha a fonte desejada para detalhar os dados abaixo.
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
 
       <div class="mt-3 d-none" data-input-panel="hc">
         {% if hc_merged_rows %}
-        <div class="card">
+        <div class="alert alert-success d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3 mb-3" role="alert">
+          <div class="d-flex align-items-center gap-2">
+            <i class="bi bi-file-earmark-medical fs-5"></i>
+            <div>
+              <strong>Planilha HC carregada</strong>
+              {% if hc_table_total %}
+              <div class="small text-muted">Mostrando registros {{ hc_table_range_start }}-{{ hc_table_range_end }} de {{ hc_table_total }} entradas ({{ hc_table_page_size }} por página).</div>
+              {% endif %}
+              {% if hc_preview_info %}
+              <div class="small text-muted mt-1">Total de colaboradores no merge: {{ hc_preview_info.total }} • Com HC: {{ hc_preview_info.with_hc }} • Sem HC: {{ hc_preview_info.without_hc }}</div>
+              {% elif not hc_table_total %}
+              <div class="small text-muted">Mostrando prévia dos 10 primeiros registros.</div>
+              {% endif %}
+            </div>
+          </div>
+          <span class="badge bg-success bg-opacity-10 text-success px-3 py-2" style="font-size: 0.75rem;">Atualizado nesta sessão</span>
+        </div>
+
+        <div class="card shadow-sm">
           <div class="card-header d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
             <div class="d-flex align-items-center gap-2">
               <i class="bi bi-people"></i>
@@ -274,13 +322,57 @@
             </div>
             {% endif %}
           </div>
-          <div class="card-body">
+          <div class="card-body p-0">
+            <form id="hc-table-controls" method="get" class="visually-hidden" data-table-control-form data-sort-field="hc_sort" data-order-field="hc_order" data-page-field="hc_page">
+              {% for key, value in hc_form_args.items() %}
+              <input type="hidden" name="{{ key }}" value="{{ value }}">
+              {% endfor %}
+              <input type="hidden" name="hc_page" value="{{ hc_table_page }}">
+              <input type="hidden" name="hc_sort" value="{{ hc_sort }}">
+              <input type="hidden" name="hc_order" value="{{ hc_order }}">
+            </form>
             <div class="table-responsive">
+              {% set hc_icon_map = {
+                'Matrícula': 'hash',
+                'Nome': 'person',
+                'Tipo': 'gear',
+                'Setor': 'building',
+                'Área': 'geo-alt',
+                'Turno': 'clock',
+                'Supervisor': 'person-check',
+                'Integração': 'check-circle',
+                'Data': 'calendar-event',
+                'Cargo HC': 'briefcase',
+                'Cargo': 'briefcase',
+                'Função HC': 'diagram-3',
+                'HC Vinculada': 'link'
+              } %}
               <table class="table table-hover align-middle mb-0">
-                <thead class="table-light">
+                <thead class="table-light sticky-top">
                   <tr>
-                    {% for col in hc_merged_columns %}
-                    <th>{{ col }}</th>
+                    {% for col in hc_column_meta %}
+                      {% set icon = hc_icon_map.get(col.name) %}
+                      <th class="align-top">
+                        <div class="d-flex align-items-center justify-content-between gap-2">
+                          <span class="d-flex align-items-center gap-1">
+                            {% if icon %}
+                            <i class="bi bi-{{ icon }} text-secondary"></i>
+                            {% endif %}
+                            {{ col.name }}
+                          </span>
+                          <div class="btn-group btn-group-sm" role="group" aria-label="Ordenar {{ col.name }}">
+                            <button type="button" class="btn btn-outline-secondary px-2 py-1 {% if col.is_sorted and col.sort_direction == 'asc' %}active{% endif %}" data-table-sort="hc-table-controls" data-sort-column="{{ col.slug }}" data-sort-order="asc" data-sort-field="hc_sort" data-order-field="hc_order" data-page-field="hc_page" aria-label="Ordenar {{ col.name }} de forma crescente">
+                              <i class="bi bi-caret-up{% if col.is_sorted and col.sort_direction == 'asc' %}-fill{% endif %}"></i>
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary px-2 py-1 {% if col.is_sorted and col.sort_direction == 'desc' %}active{% endif %}" data-table-sort="hc-table-controls" data-sort-column="{{ col.slug }}" data-sort-order="desc" data-sort-field="hc_sort" data-order-field="hc_order" data-page-field="hc_page" aria-label="Ordenar {{ col.name }} de forma decrescente">
+                              <i class="bi bi-caret-down{% if col.is_sorted and col.sort_direction == 'desc' %}-fill{% endif %}"></i>
+                            </button>
+                          </div>
+                        </div>
+                        <div class="mt-2">
+                          <input type="text" class="form-control form-control-sm" name="hc_filter_{{ col.slug }}" value="{{ col.filter_value }}" placeholder="Filtrar {{ col.name }}" form="hc-table-controls" data-table-filter="hc-table-controls" data-page-field="hc_page">
+                        </div>
+                      </th>
                     {% endfor %}
                   </tr>
                 </thead>
@@ -288,8 +380,73 @@
                   {% for row in hc_merged_rows %}
                   <tr>
                     {% for cell in row %}
-                    <td class="text-truncate" style="max-width: 240px;" title="{{ cell }}">{{ cell }}</td>
+                      {% set col_meta = hc_column_meta[loop.index0] %}
+                      {% set col_name = col_meta.name %}
+                      {% set text = (cell | string | trim) %}
+                      {% set lower = text | lower %}
+                      {% set is_blank = text == '' or lower in ['nan', 'nat', 'none', 'null'] %}
+                      <td class="text-truncate" style="max-width: 240px;" title="{{ text if not is_blank else '' }}">
+                        {% if col_name == 'Matrícula' %}
+                          {% if not is_blank %}
+                            <strong class="text-primary">{{ text }}</strong>
+                          {% else %}
+                            <span class="text-muted">—</span>
+                          {% endif %}
+                        {% elif col_name == 'Nome' %}
+                          <div class="fw-semibold">{{ is_blank and 'Sem nome' or text }}</div>
+                        {% elif col_name == 'Data' %}
+                          {% if not is_blank %}
+                            <span class="badge bg-light text-dark">{{ text }}</span>
+                          {% else %}
+                            <span class="text-muted">Sem data</span>
+                          {% endif %}
+                        {% elif col_name in ['Turno', 'Tipo', 'Setor', 'Área'] %}
+                          {% if not is_blank %}
+                            <span class="badge bg-secondary bg-opacity-10 text-secondary">{{ text }}</span>
+                          {% else %}
+                            <span class="text-muted">—</span>
+                          {% endif %}
+                        {% elif col_name == 'Integração' %}
+                          {% if lower in ['sim', 'yes', 'y'] %}
+                            <span class="badge bg-success bg-opacity-10 text-success"><i class="bi bi-check-circle me-1"></i>{{ text or 'Sim' }}</span>
+                          {% elif not is_blank %}
+                            <span class="badge bg-warning bg-opacity-10 text-warning"><i class="bi bi-exclamation-triangle me-1"></i>{{ text }}</span>
+                          {% else %}
+                            <span class="text-muted">—</span>
+                          {% endif %}
+                        {% elif col_name in ['Supervisor'] %}
+                          {% if not is_blank %}
+                            <strong>{{ text }}</strong>
+                          {% else %}
+                            <span class="text-muted">Sem supervisor</span>
+                          {% endif %}
+                        {% elif col_name in ['Cargo HC', 'Cargo', 'Função HC', 'HC Vinculada'] %}
+                          {% if not is_blank %}
+                            <span class="badge bg-primary bg-opacity-10 text-primary">{{ text }}</span>
+                          {% else %}
+                            <span class="text-muted">Sem HC</span>
+                          {% endif %}
+                        {% else %}
+                          {% if not is_blank %}
+                            {{ text }}
+                          {% else %}
+                            <span class="text-muted">—</span>
+                          {% endif %}
+                        {% endif %}
+                      </td>
                     {% endfor %}
+                  </tr>
+                  {% else %}
+                  <tr>
+                    <td colspan="{{ hc_column_meta|length or 1 }}" class="text-center py-5">
+                      <div class="text-muted">
+                        <i class="bi bi-inboxes" style="font-size: 3rem;"></i>
+                        <div class="mt-2">
+                          <h5>Nenhum registro encontrado</h5>
+                          <p class="mb-0">Ajuste os filtros ou carregue uma nova planilha HC.</p>
+                        </div>
+                      </div>
+                    </td>
                   </tr>
                   {% endfor %}
                 </tbody>
@@ -297,6 +454,36 @@
             </div>
           </div>
         </div>
+        {% if hc_table_pagination %}
+        <div class="card mt-3" data-input-panel="hc">
+          <div class="card-body d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
+            <div class="text-muted">
+              <i class="bi bi-people me-1"></i>
+              Página <strong>{{ hc_table_pagination.page }}</strong> de <strong>{{ hc_table_pagination.pages }}</strong>
+              • <strong>{{ hc_table_total }}</strong> registros processados
+            </div>
+            <nav aria-label="Paginação HC">
+              <ul class="pagination pagination-sm mb-0">
+                <li class="page-item {{ 'disabled' if not hc_table_pagination.has_prev else '' }}">
+                  <a class="page-link" href="{{ hc_table_pagination.prev_url or '#' }}" tabindex="{{ '-1' if not hc_table_pagination.has_prev else '0' }}" aria-disabled="{{ 'true' if not hc_table_pagination.has_prev else 'false' }}">
+                    <i class="bi bi-chevron-left"></i>
+                  </a>
+                </li>
+                {% for link in hc_table_pagination.page_links %}
+                <li class="page-item {{ 'active' if link.active else '' }}">
+                  <a class="page-link" href="{{ link.url }}">{{ link.page }}</a>
+                </li>
+                {% endfor %}
+                <li class="page-item {{ 'disabled' if not hc_table_pagination.has_next else '' }}">
+                  <a class="page-link" href="{{ hc_table_pagination.next_url or '#' }}" tabindex="{{ '-1' if not hc_table_pagination.has_next else '0' }}" aria-disabled="{{ 'true' if not hc_table_pagination.has_next else 'false' }}">
+                    <i class="bi bi-chevron-right"></i>
+                  </a>
+                </li>
+              </ul>
+            </nav>
+          </div>
+        </div>
+        {% endif %}
         {% else %}
         <div class="alert alert-info">
           <i class="bi bi-info-circle me-1"></i>
@@ -473,6 +660,97 @@
     @keyframes pulse-subtle {
       0%, 100% { opacity: 1; }
       50% { opacity: 0.7; }
+    }
+
+    /* Card de filtro Input*Dados */
+    [data-input-filter-card] .input-filter-card-body {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      padding: 1.25rem;
+      height: 100%;
+    }
+
+    .input-filter-toggle-group {
+      display: flex;
+      gap: 0.75rem;
+      flex: 1;
+      align-items: stretch;
+    }
+
+    .input-filter-toggle-group .btn-filter-source {
+      flex: 1 1 0;
+      min-height: 140px;
+      border-radius: 18px;
+      border: 1.5px solid transparent;
+      background: rgba(var(--bs-primary-rgb), 0.06);
+      box-shadow: inset 0 0 0 1px rgba(var(--bs-primary-rgb), 0.12);
+      color: rgba(var(--bs-primary-rgb), 1);
+      font-weight: 600;
+      letter-spacing: 0.01em;
+      text-transform: uppercase;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      gap: 0.55rem;
+      transition: transform 0.2s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+    }
+
+    .input-filter-toggle-group .btn-filter-source .input-filter-icon {
+      font-size: 1.6rem;
+      line-height: 1;
+      color: var(--accent-color);
+    }
+
+    .input-filter-toggle-group .btn-filter-source[data-input-filter="hc"] {
+      background: rgba(var(--bs-success-rgb), 0.08);
+      box-shadow: inset 0 0 0 1px rgba(var(--bs-success-rgb), 0.18);
+      color: rgba(var(--bs-success-rgb), 1);
+    }
+
+    .input-filter-toggle-group .btn-filter-source[data-input-filter="hc"] .input-filter-icon {
+      color: var(--bs-success);
+    }
+
+    .input-filter-toggle-group .btn-filter-source:hover,
+    .input-filter-toggle-group .btn-filter-source:focus-visible {
+      transform: translateY(-2px);
+      box-shadow: 0 14px 28px rgba(13, 110, 253, 0.18);
+      border-color: rgba(13, 110, 253, 0.25);
+    }
+
+    .input-filter-toggle-group .btn-filter-source[data-input-filter="hc"]:hover,
+    .input-filter-toggle-group .btn-filter-source[data-input-filter="hc"]:focus-visible {
+      box-shadow: 0 14px 28px rgba(25, 135, 84, 0.18);
+      border-color: rgba(25, 135, 84, 0.25);
+    }
+
+    .input-filter-toggle-group .btn-filter-source.active,
+    .input-filter-toggle-group .btn-filter-source[aria-pressed="true"] {
+      /* mantém o mesmo visual para estado ativo */
+      transform: none;
+      box-shadow: inset 0 0 0 1px rgba(var(--bs-primary-rgb), 0.12);
+      border-color: transparent;
+    }
+
+    .input-filter-toggle-group .btn-filter-source[data-input-filter="hc"].active,
+    .input-filter-toggle-group .btn-filter-source[data-input-filter="hc"][aria-pressed="true"] {
+      box-shadow: inset 0 0 0 1px rgba(var(--bs-success-rgb), 0.18);
+      border-color: transparent;
+    }
+
+    .input-filter-hint {
+      line-height: 1.4;
+    }
+
+    @media (max-width: 576px) {
+      .input-filter-toggle-group {
+        flex-direction: column;
+      }
+      .input-filter-toggle-group .btn-filter-source {
+        min-height: 120px;
+      }
     }
     
     /* Responsividade melhorada */
