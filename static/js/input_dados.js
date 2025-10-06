@@ -7,6 +7,7 @@
     const fileInput = form.querySelector('#file');
     const submitBtn = form.querySelector('button[type="submit"]');
     const feedback = document.getElementById('fileFeedback');
+    const allowedExtensions = ['.xlsx', '.xls', '.xlsb'];
 
     function clearFeedback(){
       if(feedback){ feedback.textContent = ''; feedback.classList.remove('text-danger'); }
@@ -21,22 +22,34 @@
 
     function validate(){
       clearFeedback();
-      const f = fileInput?.files && fileInput.files[0];
-      if(!f){ return false; }
-      const valid = f.name.toLowerCase().endsWith('.xlsx');
-      if(!valid){
+      const files = Array.from(fileInput?.files || []);
+      if(!files.length){ return false; }
+      const invalidFile = files.find((file) => {
+        const name = file.name.toLowerCase();
+        return !allowedExtensions.some((ext) => name.endsWith(ext));
+      });
+      if(invalidFile){
         if(fileInput){
-          fileInput.setCustomValidity('Selecione um arquivo com extensão .xlsx');
+          fileInput.setCustomValidity('Selecione arquivos com extensões .xlsx, .xls ou .xlsb');
           // exibe UI nativa do navegador
           fileInput.reportValidity();
         }
         if(feedback){
-          feedback.textContent = 'Formato inválido. Envie um arquivo .xlsx';
+          feedback.textContent = `Formato inválido: ${invalidFile.name}. Aceitos: .xlsx, .xls, .xlsb`;
           feedback.classList.add('text-danger');
         }
         return false;
       }
-      if(feedback){ feedback.textContent = `${f.name} ${humanSize(f.size) ? '('+humanSize(f.size)+')' : ''}`; }
+      if(feedback){
+        if(files.length === 1){
+          const single = files[0];
+          feedback.textContent = `${single.name} ${humanSize(single.size) ? '('+humanSize(single.size)+')' : ''}`;
+        } else {
+          const totalSize = files.reduce((sum, f) => sum + (f.size || 0), 0);
+          const names = files.map((f) => f.name).join(', ');
+          feedback.textContent = `${files.length} arquivos selecionados (${humanSize(totalSize)}) - ${names}`;
+        }
+      }
       return true;
     }
 

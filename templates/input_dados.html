@@ -32,9 +32,9 @@
                 Requisitos do Arquivo
               </div>
               <ul class="mb-0 text-muted">
-                <li>Formato suportado: <strong>.xlsx</strong></li>
-                <li>Somente a primeira planilha é lida</li>
-                <li>Prévia limitada às <strong>5 primeiras linhas</strong></li>
+                <li>Formatos suportados: <strong>.xlsx, .xls, .xlsb</strong></li>
+                <li>Você pode enviar mais de um arquivo por vez (opcional)</li>
+                <li>Prévia limitada às <strong>5 primeiras linhas</strong> do primeiro arquivo elegível</li>
               </ul>
             </div>
           </div>
@@ -42,9 +42,9 @@
           <div class="col-md-8">
             <label for="file" class="form-label">
               <i class="bi bi-file-earmark-arrow-up me-1"></i>
-              Selecione o arquivo (.xlsx)
+              Selecione os arquivos (Excel)
             </label>
-            <input class="form-control" type="file" id="file" name="file" accept=".xlsx" required>
+            <input class="form-control" type="file" id="file" name="files" accept=".xlsx,.xls,.xlsb" multiple required>
             <div id="fileFeedback" class="form-text"></div>
           </div>
           <div class="col-md-4 d-flex align-items-end">
@@ -98,6 +98,67 @@
             </tbody>
           </table>
         </div>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if hc_previews %}
+    <div class="card mt-3">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <div class="d-flex align-items-center">
+            <i class="bi bi-file-earmark-person text-success me-2"></i>
+            <h5 class="mb-0">Prévia dos Dados HC</h5>
+          </div>
+        </div>
+
+        {% if hc_previews|length > 1 %}
+        <div class="text-muted mb-3">
+          <i class="bi bi-info-circle me-1"></i>
+          Exibindo as 5 primeiras linhas de cada planilha HC carregada.
+        </div>
+        {% endif %}
+
+        {% for preview in hc_previews %}
+        <div class="hc-preview-block {% if not loop.last %}mb-4 pb-4 border-bottom{% endif %}">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <div class="d-flex align-items-center gap-2">
+              <span class="badge bg-success-subtle text-success">HC {{ loop.index }}</span>
+              {% if preview.shape %}
+              <small class="text-muted">Dimensão: <strong>{{ preview.shape[0] }}</strong> linhas × <strong>{{ preview.shape[1] }}</strong> colunas</small>
+              {% endif %}
+            </div>
+            {% if preview.filename %}
+            <span class="badge bg-success" title="Nome do arquivo">{{ preview.filename }}</span>
+            {% endif %}
+          </div>
+
+          {% if preview.rows %}
+          <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+              <thead class="table-light">
+                <tr>
+                  {% for col in preview.columns %}
+                  <th>{{ col }}</th>
+                  {% endfor %}
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in preview.rows %}
+                <tr>
+                  {% for cell in row %}
+                  <td class="text-truncate" style="max-width: 260px;" title="{{ cell }}">{{ cell }}</td>
+                  {% endfor %}
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+          <div class="text-muted fst-italic">Nenhum dado disponível para exibição.</div>
+          {% endif %}
+        </div>
+        {% endfor %}
       </div>
     </div>
     {% endif %}

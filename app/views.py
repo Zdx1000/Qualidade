@@ -1,9 +1,11 @@
+import importlib
 import math
 import re
+from pathlib import Path
 from datetime import datetime, timedelta
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, send_file, current_app
-from sqlalchemy import and_, func
+from sqlalchemy import and_, func, select
 from . import db
 from .models import ConfigList, Colaborador
 
@@ -11,9 +13,28 @@ bp = Blueprint('main', __name__)
 
 
 last_planilha = None
+last_planilha_hc = None
 
 
 # Helpers
+
+
+def normalize_matricula(value):
+    if value is None:
+        return None
+    try:
+        text = str(value).strip()
+        if not text:
+            return None
+        lowered = text.lower()
+        if lowered in {'nan', 'none', 'null'}:
+            return None
+        numeric = int(float(text))
+        if numeric <= 0:
+            return None
+        return numeric
+    except (ValueError, TypeError):
+        return None
 
 def manipular_dados(df):
     """Prepara o DF da planilha e faz merge com o banco (apenas tipo TALKMAN) por Matrícula.
@@ -559,15 +580,12 @@ def api_lists(nome_lista):
 @bp.route('/input-dados', methods=['GET', 'POST'])
 def input_dados():
     if request.method == 'POST':
-        file = request.files.get('file')
-        if not file or file.filename == '':
+        files = [f for f in request.files.getlist('files') if f and f.filename]
+        if not files:
             flash('Nenhum arquivo selecionado.', 'warning')
             return redirect(url_for('main.input_dados'))
 
-        filename = file.filename
-        if not filename.lower().endswith('.xlsx'):
-            flash('Formato inválido. Envie um arquivo .xlsx', 'danger')
-            return redirect(url_for('main.input_dados'))
+        allowed_extensions = {'.xlsx', '.xls', '.xlsb'}
 
         try:
             import pandas as pd  # import local para não quebrar app se pandas não estiver instalado
@@ -575,16 +593,135 @@ def input_dados():
             flash('Dependência pandas não encontrada. Instale com: pip install pandas', 'danger')
             return redirect(url_for('main.input_dados'))
 
-        try:
-            file.stream.seek(0)
-            df = pd.read_excel(file, engine='openpyxl')
+        global last_planilha, last_planilha_hc
+        last_planilha_hc = None
 
-            
-            if file.filename.startswith("Rastreabilidade_Tra"):
+        def determine_engine(ext: str) -> str:
+            ext = (ext or '').lower()
+            if ext == '.xlsb':
+                try:
+                    importlib.import_module('pyxlsb')
+                except ImportError:
+                    raise RuntimeError('Dependência pyxlsb não encontrada. Instale com: pip install pyxlsb')
+                return 'pyxlsb'
+            if ext == '.xls':
+                try:
+                    importlib.import_module('xlrd')
+                except ImportError:
+                    raise RuntimeError('Dependência xlrd não encontrada. Instale com: pip install xlrd==1.2.0')
+                return 'xlrd'
+            try:
+                importlib.import_module('openpyxl')
+            except ImportError:
+                raise RuntimeError('Dependência openpyxl não encontrada. Instale com: pip install openpyxl')
+            return 'openpyxl'
+
+        def read_dataframe(storage, *, sheet_name=0, extension=None):
+            ext = extension or Path(storage.filename).suffix.lower()
+            engine = determine_engine(ext)
+            try:
+                storage.stream.seek(0)
+            except Exception:
+                pass
+            return pd.read_excel(storage, engine=engine, sheet_name=sheet_name)
+
+        preview_filename = None
+        preview_df = None
+        preview_shape = None
+        processed_any = False
+        invalid_names = []
+        hc_previews = []
+
+        for file in files:
+            filename = file.filename
+            extension = Path(filename).suffix.lower()
+            if extension not in allowed_extensions:
+                invalid_names.append(filename)
+                continue
+
+            uppercase_name = filename.strip().upper()
+
+            if uppercase_name.startswith('HC'):
+                try:
+                    df_hc = read_dataframe(file, sheet_name='Base Colab.', extension=extension)
+                except RuntimeError as dep_err:
+                    flash(str(dep_err), 'danger')
+                    continue
+                except ValueError as sheet_err:
+                    flash(f'Planilha "{filename}" não contém a aba "Base Colab.": {sheet_err}', 'danger')
+                    continue
+                except Exception as err:
+                    current_app.logger.exception('Falha ao carregar planilha HC %s', filename)
+                    flash(f'Falha ao processar a planilha "{filename}": {err}', 'danger')
+                    continue
+
+                display_df = df_hc.copy()
+                expected_cols = ["Matrícula", "Cargo", "Situação", "Turno"]
+                missing_cols = [col for col in expected_cols if col not in display_df.columns]
+                if missing_cols:
+                    flash(f'Planilha "{filename}" não possui as colunas esperadas: {", ".join(missing_cols)}', 'warning')
+                    continue
+
+                display_df = display_df[expected_cols].copy()
+                display_df = display_df.rename(columns={
+                    "Cargo": "Cargo HC",
+                    "Situação": "Situação HC",
+                    "Turno": "Turno HC"
+                })
+                display_df['Matrícula'] = display_df['Matrícula'].apply(normalize_matricula)
+                display_df = display_df[display_df['Matrícula'].notna()].copy()
+                try:
+                    display_df['Matrícula'] = display_df['Matrícula'].astype(int)
+                except Exception:
+                    pass
+
+                processed_any = True
+                last_planilha_hc = display_df.copy()
+                current_app.logger.info('Planilha HC detectada: "%s" (%s). Linhas: %s | Colunas: %s', filename, extension or 'sem extensão', display_df.shape[0], list(display_df.columns))
+                try:
+                    preview_block = display_df.head(5).copy()
+                except Exception:
+                    preview_block = display_df
+                try:
+                    preview_block = preview_block.fillna('')
+                except Exception:
+                    pass
+                try:
+                    preview_rows = preview_block.astype(str).values.tolist()
+                except Exception:
+                    preview_rows = preview_block.values.tolist()
+                preview_cols_hc = [str(c) for c in list(preview_block.columns)]
+                hc_previews.append({
+                    'filename': filename,
+                    'shape': display_df.shape,
+                    'columns': preview_cols_hc,
+                    'rows': preview_rows,
+                })
+                try:
+                    console_preview = display_df.head(5).to_string(index=False)
+                except Exception:
+                    console_preview = str(display_df.head(5))
+                print(f'[Input*Dados][HC] {filename} - Prévia das 5 primeiras linhas:\n{console_preview}')
+                flash(f'Planilha "{filename}" (HC) carregada e registrada no console.', 'info')
+                continue
+
+            try:
+                df = read_dataframe(file, extension=extension)
+            except RuntimeError as dep_err:
+                flash(str(dep_err), 'danger')
+                continue
+            except Exception as err:
+                current_app.logger.exception('Falha ao processar planilha %s', filename)
+                flash(f'Falha ao processar o arquivo "{filename}": {err}', 'danger')
+                continue
+
+            processed_any = True
+
+            if filename.startswith("Rastreabilidade_Tra"):
                 try:
                     df_listColomns = ["Do Endereço", "Funcionário", "Nome", "Data", "Execução por Voz"]
-                    df = df[df_listColomns].copy()
-                    df["MOD"] = df["Do Endereço"].fillna("").astype(str).str[:1]
+                    df_trabalho = df[df_listColomns].copy()
+                    df_trabalho["MOD"] = df_trabalho["Do Endereço"].fillna("").astype(str).str[:1]
 
                     existing_matriculas = set()
                     for (value,) in (
@@ -599,56 +736,71 @@ def input_dados():
                         except (TypeError, ValueError):
                             continue
 
-                    def resolve_matricula(raw):
-                        if pd.isna(raw):
-                            return None
-                        try:
-                            text = str(raw).strip()
-                            if not text:
-                                return None
-                            numeric = int(float(text))
-                        except (ValueError, TypeError):
-                            return None
-                        return numeric
-
                     def flag_treinado(raw):
-                        matricula = resolve_matricula(raw)
+                        matricula = normalize_matricula(raw)
                         return 'Sim' if matricula is not None and matricula in existing_matriculas else 'Não'
 
-                    df['Treinado'] = df['Funcionário'].apply(flag_treinado)
+                    df_trabalho['Treinado'] = df_trabalho['Funcionário'].apply(flag_treinado)
 
                     flash(f'Arquivo de rastreabilidade detectado. Linhas: Columns {df_listColomns} | MOD e Treinado adicionados', 'info')
 
                     global last_planilha
-                    planilha = df.copy()
-                    df_manipulada, planilha, bancodb = manipular_dados(planilha)
-
-                    if planilha is not None:
-                        last_planilha = planilha
-                    
+                    planilha = df_trabalho.copy()
+                    resultado = manipular_dados(planilha)
+                    if resultado is not None:
+                        df_manipulada, planilha, bancodb = resultado
+                        if planilha is not None:
+                            last_planilha = planilha
                 except Exception as e:
-                    flash(f'Falha ao processar arquivo de rastreabilidade: {e}', 'danger')
+                    current_app.logger.exception('Falha ao processar arquivo de rastreabilidade %s', filename)
+                    flash(f'Falha ao processar arquivo de rastreabilidade "{filename}": {e}', 'danger')
+                    continue
 
-            current_app.logger.info('Input*Dados: %s linhas, %s colunas. Colunas: %s', df.shape[0], df.shape[1], list(df.columns))
+                candidate_df = df_trabalho
+            else:
+                candidate_df = df
 
-            preview_df = df.head(5).copy()
+            if preview_df is None:
+                preview_df = candidate_df
+                preview_filename = filename
+                preview_shape = candidate_df.shape
 
+            rows_count = candidate_df.shape[0]
+            cols_count = candidate_df.shape[1]
+            flash(f'Arquivo "{filename}" processado com sucesso. Linhas: {rows_count} | Colunas: {cols_count}', 'success')
+
+        if invalid_names:
+            ignored = ', '.join(invalid_names)
+            flash(f'Arquivos ignorados por formato inválido: {ignored}', 'warning')
+
+        if not processed_any:
+            return redirect(url_for('main.input_dados'))
+
+        if preview_df is None and not hc_previews:
+            return redirect(url_for('main.input_dados'))
+
+        preview_cols = None
+        preview_rows = None
+        if preview_df is not None:
+            preview_display = preview_df.head(5).copy()
             try:
-                preview_df = preview_df.fillna('')
+                preview_display = preview_display.fillna('')
             except Exception:
                 pass
             try:
-                preview_rows = preview_df.astype(str).values.tolist()
+                preview_rows = preview_display.astype(str).values.tolist()
             except Exception:
-                preview_rows = preview_df.values.tolist()
-            preview_cols = [str(c) for c in list(preview_df.columns)]
+                preview_rows = preview_display.values.tolist()
+            preview_cols = [str(c) for c in list(preview_display.columns)]
 
-            flash(f'Arquivo "{filename}" processado com sucesso. Linhas: {df.shape[0]} | Colunas: {df.shape[1]}', 'success')
-            return render_template('input_dados.html', preview_cols=preview_cols, preview_rows=preview_rows, preview_shape=df.shape, filename=filename)
-        except Exception as e:
-            current_app.logger.exception('Falha ao processar planilha %s', filename)
-            flash(f'Falha ao processar o arquivo: {e}', 'danger')
-            return redirect(url_for('main.input_dados'))
+        return render_template(
+            'input_dados.html',
+            preview_cols=preview_cols,
+            preview_rows=preview_rows,
+            preview_shape=preview_shape,
+            filename=preview_filename,
+            hc_previews=hc_previews,
+        )
 
     return render_template('input_dados.html')
 
@@ -1021,6 +1173,58 @@ def painel_grafico(planilha=None):
         except Exception as e:
             current_app.logger.exception('Falha ao preparar dados do Input*Dados: %s', e)
 
+    hc_merged_rows = []
+    hc_merged_columns = []
+    hc_preview_info = None
+
+    try:
+        source_hc = last_planilha_hc
+    except NameError:
+        source_hc = None
+
+    if source_hc is not None:
+        try:
+            import pandas as pd
+            bind = db.session.get_bind()
+            stmt = select(
+                Colaborador.matricula.label("Matrícula"),
+                Colaborador.nome.label("Nome"),
+                Colaborador.tipo.label("Tipo"),
+                Colaborador.setor.label("Setor"),
+                Colaborador.area.label("Área"),
+                Colaborador.turno.label("Turno"),
+                Colaborador.supervisor.label("Supervisor"),
+                Colaborador.integracao.label("Integração"),
+                Colaborador.data.label("Data"),
+            )
+            df_db = pd.read_sql(stmt, bind)
+            df_db['Matrícula'] = df_db['Matrícula'].apply(normalize_matricula)
+            df_db = df_db[df_db['Matrícula'].notna()].copy()
+            try:
+                df_db['Matrícula'] = df_db['Matrícula'].astype(int)
+            except Exception:
+                pass
+
+            merged_hc = pd.merge(df_db, source_hc, on='Matrícula', how='left')
+            hc_preview_info = {
+                'total': len(merged_hc),
+                'with_hc': int(merged_hc['Cargo HC'].notna().sum()),
+                'without_hc': int(merged_hc['Cargo HC'].isna().sum()),
+            }
+
+            preview_block = merged_hc.head(10).copy()
+            try:
+                preview_block = preview_block.fillna('')
+            except Exception:
+                pass
+            try:
+                hc_merged_rows = preview_block.astype(str).values.tolist()
+            except Exception:
+                hc_merged_rows = preview_block.values.tolist()
+            hc_merged_columns = [str(c) for c in list(preview_block.columns)]
+        except Exception as e:
+            current_app.logger.exception('Falha ao gerar merge HC: %s', e)
+
     return render_template(
         'painel_grafico.html',
         total_colaboradores=total_colaboradores,
@@ -1059,4 +1263,7 @@ def painel_grafico(planilha=None):
         input_table_range_start=input_table_range_start,
         input_table_range_end=input_table_range_end,
         merge_colab_percent=merge_colab_percent,
+        hc_merged_columns=hc_merged_columns,
+        hc_merged_rows=hc_merged_rows,
+        hc_preview_info=hc_preview_info,
     )

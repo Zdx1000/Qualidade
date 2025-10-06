@@ -1746,6 +1746,33 @@
     });
   }
 
+  function setupInputFilters() {
+    const filterButtons = Array.from(document.querySelectorAll('[data-input-filter]'));
+    const panels = Array.from(document.querySelectorAll('[data-input-panel]'));
+    if (!filterButtons.length || !panels.length) return;
+
+    const activate = (filter) => {
+      panels.forEach((panel) => {
+        const key = panel.getAttribute('data-input-panel');
+        panel.classList.toggle('d-none', key !== filter);
+      });
+    };
+
+    filterButtons.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        filterButtons.forEach((other) => other.classList.remove('active'));
+        btn.classList.add('active');
+        activate(btn.getAttribute('data-input-filter'));
+      });
+    });
+
+    const initial = filterButtons.find((btn) => btn.classList.contains('active')) || filterButtons[0];
+    if (initial) {
+      initial.classList.add('active');
+      activate(initial.getAttribute('data-input-filter'));
+    }
+  }
+
   function setupTabs() {
     if (window.AppPanel.tabsBound) return;
     const buttons = Array.from(document.querySelectorAll('.card-header .btn-group [data-target]'));
@@ -1824,6 +1851,7 @@
   document.addEventListener('DOMContentLoaded', () => {
     setupTabs();
     mountCharts();
+    setupInputFilters();
     if (window.location.hash === '#tab-merge' || new URLSearchParams(window.location.search).get('tab') === 'merge') {
       mountMergeCharts();
     }
