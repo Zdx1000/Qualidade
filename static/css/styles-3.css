@@ -1,20 +1,51 @@
 /* Tema 3 - Vermelho */
 :root {
   --primary-color: #5a2a2a;     /* base escura avermelhada */
+  --primary-escrita: #5a2a2a;
   --primary-light: #7a3a3a;     /* variante mais clara */
+  --primary-gradient-start: #7a1f1f;
+  --primary-gradient-middle: #a12424;
+  --primary-gradient-end: #7a1f1f;
+  --primary-rgb: 90, 42, 42;
   --accent-color: #ef4444;      /* vermelho vívido */
   --accent-hover: #dc2626;      /* vermelho hover */
+  --accent-rgb: 239, 68, 68;
   --success-color: #22c55e;     /* verde para sucesso */
+  --success-dark: #15803d;
+  --success-rgb: 34, 197, 94;
   --warning-color: #f59e0b;     /* amarelo aviso */
+  --warning-rgb: 245, 158, 11;
   --danger-color: #b91c1c;      /* vermelho escuro para perigo */
+  --danger-rgb: 185, 28, 28;
+  --info-color: #f87171;
+  --info-hover: #ef4444;
+  --neutral-100: #ffffff;
+  --neutral-200: #fff1f2;
+  --neutral-300: #ffe4e6;
   --light-bg: #fff5f5;          /* fundo claro rosado */
-  --card-bg: #ffffff;           /* cartões brancos */
+  --card-bg: var(--neutral-100);           /* cartões brancos */
   --border-color: #f2d7d7;      /* borda rosada leve */
   --text-muted: #6b7280;        /* cinza neutro */
   --shadow-light: 0 2px 4px rgba(185, 28, 28, 0.12);
   --shadow-medium: 0 4px 12px rgba(185, 28, 28, 0.18);
   /* Fundos temáticos */
-  --app-bg: linear-gradient(135deg, #fff1f2 0%, #ffe4e6 100%);
-  --header-bg: linear-gradient(135deg, #7a1f1f 0%, #a12424 50%, #7a1f1f 100%);
+  --app-bg: linear-gradient(135deg, var(--neutral-200) 0%, var(--neutral-300) 100%);
+  --header-bg: linear-gradient(135deg, var(--primary-gradient-start) 0%, var(--primary-gradient-middle) 50%, var(--primary-gradient-end) 100%);
   --acc-color-bg: #ffe5e5; /* fundo para elementos de destaque */
+  /* Paleta dedicada aos gráficos */
+  --chart-color-1: var(--accent-color);
+  --chart-color-2: #f87171;
+  --chart-color-3: var(--success-color);
+  --chart-color-4: var(--warning-color);
+  --chart-color-5: var(--danger-color);
+  --chart-color-6: var(--info-color);
+  --chart-color-emphasis: #fb7185;
+  --chart-neutral: #f4c7c7;
+  --chart-grid-color: rgba(87, 25, 25, 0.1);
+  --chart-grid-dim: rgba(190, 68, 68, 0.18);
+  --chart-tooltip-bg: rgba(255, 245, 245, 0.96);
+  --chart-tooltip-border: rgba(248, 113, 113, 0.45);
+  --chart-tooltip-text: #4c0519;
+  --chart-area-fill: rgba(239, 68, 68, 0.18);
+  --chart-area-strong: rgba(239, 68, 68, 0.42);
 }

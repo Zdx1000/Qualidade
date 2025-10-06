@@ -1,0 +1,51 @@
+/* Tema 5 - Escuro */
+:root {
+  --primary-color: #0f172a;          /* base quase azul marinho */
+  --primary-escrita: #e4e4e4;
+  --primary-light: #1e293b;          /* variante mais clara */
+  --primary-gradient-start: #0b1120;
+  --primary-gradient-middle: #1e293b;
+  --primary-gradient-end: #0b1120;
+  --primary-rgb: 15, 23, 42;
+  --accent-color: #38bdf8;           /* azul neon suave */
+  --accent-hover: #0ea5e9;           /* azul vibrante */
+  --accent-rgb: 56, 189, 248;
+  --success-color: #22c55e;          /* verde para sucesso */
+  --success-dark: #15803d;
+  --success-rgb: 34, 197, 94;
+  --warning-color: #fbbf24;          /* amarelo âmbar */
+  --warning-rgb: 251, 191, 36;
+  --danger-color: #f87171;           /* vermelho suave */
+  --danger-rgb: 248, 113, 113;
+  --info-color: #7dd3fc;
+  --info-hover: #38bdf8;
+  --neutral-100: #0f172a;
+  --neutral-200: #111827;
+  --neutral-300: #1f2937;
+  --light-bg: #111827;               /* fundo escuro padrão */
+  --card-bg: #1f2937;                /* cartões em tom grafite */
+  --border-color: #293548;           /* borda sutil */
+  --text-muted: #94a3b8;             /* cinza azulado */
+  --shadow-light: 0 2px 6px rgba(15, 23, 42, 0.35);
+  --shadow-medium: 0 8px 24px rgba(8, 11, 20, 0.45);
+  /* Fundos temáticos */
+  --app-bg: radial-gradient(circle at top, #1f2937 0%, #0b1120 55%, #020617 100%);
+  --header-bg: linear-gradient(135deg, rgba(8, 47, 73, 0.95) 0%, rgba(12, 74, 110, 0.85) 50%, rgba(8, 47, 73, 0.95) 100%);
+  --acc-color-bg: #16213d; /* fundo para elementos de destaque */
+  /* Paleta dedicada aos gráficos */
+  --chart-color-1: var(--accent-color);
+  --chart-color-2: #7dd3fc;
+  --chart-color-3: var(--success-color);
+  --chart-color-4: var(--warning-color);
+  --chart-color-5: var(--danger-color);
+  --chart-color-6: #818cf8;
+  --chart-color-emphasis: #fbbf24;
+  --chart-neutral: #334155;
+  --chart-grid-color: rgba(148, 163, 184, 0.22);
+  --chart-grid-dim: rgba(30, 41, 59, 0.6);
+  --chart-tooltip-bg: rgba(15, 23, 42, 0.94);
+  --chart-tooltip-border: rgba(56, 189, 248, 0.4);
+  --chart-tooltip-text: #e2e8f0;
+  --chart-area-fill: rgba(56, 189, 248, 0.22);
+  --chart-area-strong: rgba(56, 189, 248, 0.4);
+}

@@ -1,22 +1,53 @@
 /* === PALETA PROFISSIONAL === */
 :root {
   --primary-color: #2c3e50;
+  --primary-escrita: #2c3e50;
   --primary-light: #34495e;
+  --primary-gradient-start: #1e3c72;
+  --primary-gradient-middle: #2a5298;
+  --primary-gradient-end: #1e3c72;
   --accent-color: #3498db;
   --accent-hover: #2980b9;
+  --accent-rgb: 52, 152, 219;
   --success-color: #27ae60;
+  --success-dark: #229954;
+  --success-rgb: 39, 174, 96;
   --warning-color: #f39c12;
+  --warning-rgb: 243, 156, 18;
   --danger-color: #e74c3c;
+  --danger-rgb: 231, 76, 60;
+  --info-color: #0ea5e9;
+  --info-hover: #0b75d1;
+  --primary-rgb: 44, 62, 80;
+  --neutral-100: #ffffff;
+  --neutral-200: #f5f7fa;
+  --neutral-300: #c3cfe2;
   --light-bg: #e6e7ee;
-  --card-bg: #ffffff;
+  --card-bg: var(--neutral-100);
   --border-color: #e4e3f0;
   --text-muted: #6c757d;
   --shadow-light: 0 2px 4px rgba(0,0,0,0.1);
   --shadow-medium: 0 4px 12px rgba(0,0,0,0.15);
   /* Variáveis de background globais */
-  --app-bg: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-  --header-bg: linear-gradient(135deg, #1e3c72 0%, #2a5298 50%, #1e3c72 100%);
-  --acc-color-bg: #fff; /* fundo para elementos de destaque */
+  --app-bg: linear-gradient(135deg, var(--neutral-200) 0%, var(--neutral-300) 100%);
+  --header-bg: linear-gradient(135deg, var(--primary-gradient-start) 0%, var(--primary-gradient-middle) 50%, var(--primary-gradient-end) 100%);
+  --acc-color-bg: var(--neutral-100); /* fundo para elementos de destaque */
+  /* Paleta dedicada aos gráficos */
+  --chart-color-1: var(--accent-color);
+  --chart-color-2: #60a5fa;
+  --chart-color-3: var(--success-color);
+  --chart-color-4: var(--warning-color);
+  --chart-color-5: var(--danger-color);
+  --chart-color-6: var(--info-color);
+  --chart-color-emphasis: #fbbf24;
+  --chart-neutral: #94a3b8;
+  --chart-grid-color: rgba(15, 23, 42, 0.08);
+  --chart-grid-dim: rgba(148, 163, 184, 0.16);
+  --chart-tooltip-bg: rgba(255, 255, 255, 0.96);
+  --chart-tooltip-border: rgba(148, 163, 184, 0.45);
+  --chart-tooltip-text: #1f2937;
+  --chart-area-fill: rgba(52, 152, 219, 0.18);
+  --chart-area-strong: rgba(52, 152, 219, 0.45);
 }
 
 /* === LAYOUT GERAL === */
@@ -35,7 +66,7 @@ body {
   background: var(--header-bg);
   color: white;
   box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-  border-bottom: 3px solid #3498db;
+  border-bottom: 3px solid var(--accent-color);
   position: relative;
 }
 
@@ -69,7 +100,7 @@ body {
 
 .brand-icon i {
   font-size: 1.5rem;
-  color: #3498db;
+  color: var(--accent-color);
 }
 
 .brand-title {
@@ -117,10 +148,10 @@ body {
 }
 
 .nav-item.active {
-  background: rgba(52, 152, 219, 0.3);
+  background: rgba(var(--accent-rgb), 0.3);
   color: white;
-  border-color: rgba(52, 152, 219, 0.5);
-  box-shadow: 0 2px 8px rgba(52, 152, 219, 0.3);
+  border-color: rgba(var(--accent-rgb), 0.5);
+  box-shadow: 0 2px 8px rgba(var(--accent-rgb), 0.3);
 }
 
 .nav-item i,
@@ -222,13 +253,13 @@ body {
 .card-header {
   padding: 0.75rem 1.25rem;
   border-bottom: 1px solid var(--border-color);
-  background: var(--light-bg);
+  background: var(--light-bg) !important;
 }
 
 /* === FORMULÁRIOS === */
 .form-label {
   font-weight: 600;
-  color: var(--primary-color);
+  color: var(--primary-escrita);
   margin-bottom: 0.5rem;
 }
 
@@ -261,16 +292,16 @@ body {
 
 .btn-primary {
   background: linear-gradient(135deg, var(--accent-color) 0%, var(--accent-hover) 100%);
-  box-shadow: 0 4px 15px rgba(52, 152, 219, 0.3);
+  box-shadow: 0 4px 15px rgba(var(--accent-rgb), 0.3);
 }
 
 .btn-primary:hover {
   transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(52, 152, 219, 0.4);
+  box-shadow: 0 6px 20px rgba(var(--accent-rgb), 0.4);
 }
 
 .btn-success {
-  background: linear-gradient(135deg, var(--success-color) 0%, #229954 100%);
+  background: linear-gradient(135deg, var(--success-color) 0%, var(--success-dark) 100%);
 }
 
 .btn-outline-secondary {
@@ -320,7 +351,7 @@ body {
 .field-group-title {
   font-size: 1rem;
   font-weight: 700;
-  color: var(--primary-color);
+  color: var(--primary-escrita);
   margin-bottom: 0.75rem;
   display: flex;
   align-items: center;
@@ -350,7 +381,7 @@ body {
 }
 
 .table-hover tbody tr:hover {
-  background-color: rgba(52, 152, 219, 0.05);
+  background-color: rgba(var(--accent-rgb), 0.05);
 }
 
 .table td, .table th {

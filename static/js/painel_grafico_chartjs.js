@@ -60,6 +60,42 @@
     return value ? value.trim() : fallback;
   }
 
+  function getChartThemeConfig(mode) {
+    const colors = [];
+    for (let idx = 1; idx <= 8; idx += 1) {
+      const value = getCssVar(`--chart-color-${idx}`, '').trim();
+      if (value) {
+        colors.push(value);
+      }
+    }
+    if (!colors.length) {
+      colors.push(getCssVar('--accent-color', mode === 'dark' ? '#60a5fa' : '#2563eb'));
+    }
+
+    const emphasis = getCssVar('--chart-color-emphasis', '#fbbf24');
+    const neutral = getCssVar('--chart-neutral', mode === 'dark' ? '#94a3b8' : '#64748b');
+    const gridColor = getCssVar('--chart-grid-color', mode === 'dark' ? 'rgba(148, 163, 184, 0.18)' : 'rgba(15, 23, 42, 0.08)');
+    const gridDim = getCssVar('--chart-grid-dim', mode === 'dark' ? 'rgba(148, 163, 184, 0.12)' : 'rgba(15, 23, 42, 0.06)');
+    const tooltipBg = getCssVar('--chart-tooltip-bg', mode === 'dark' ? 'rgba(15, 23, 42, 0.94)' : 'rgba(248, 250, 252, 0.98)');
+    const tooltipBorder = getCssVar('--chart-tooltip-border', mode === 'dark' ? '1px solid rgba(100, 116, 139, 0.35)' : '1px solid rgba(148, 163, 184, 0.45)');
+    const tooltipText = getCssVar('--chart-tooltip-text', mode === 'dark' ? '#e2e8f0' : '#1f2937');
+    const areaFill = getCssVar('--chart-area-fill', mode === 'dark' ? 'rgba(96, 165, 250, 0.22)' : 'rgba(52, 152, 219, 0.18)');
+    const areaStrong = getCssVar('--chart-area-strong', mode === 'dark' ? 'rgba(56, 189, 248, 0.38)' : 'rgba(52, 152, 219, 0.45)');
+
+    return {
+      colors,
+      emphasis,
+      neutral,
+      gridColor,
+      gridDim,
+      tooltipBg,
+      tooltipBorder,
+      tooltipText,
+      areaFill,
+      areaStrong
+    };
+  }
+
   function adjustColor(hex, factor) {
     if (!hex || !hex.startsWith('#')) return hex;
     const clean = hex.length === 4
@@ -299,7 +335,14 @@
 
   function ensureTooltipEl(chart, options = {}) {
     if (!chart || !chart.canvas) return null;
-    const { mode = document.documentElement.dataset.bsTheme === 'dark' ? 'dark' : 'light', textColor, minWidth = 220 } = options;
+    const {
+      mode = document.documentElement.dataset.bsTheme === 'dark' ? 'dark' : 'light',
+      textColor,
+      minWidth = 220,
+      background,
+      border,
+      boxShadow
+    } = options;
     const parent = chart.canvas.parentNode;
     if (!parent) return null;
     if (window.getComputedStyle(parent).position === 'static') {
@@ -324,18 +367,18 @@
       parent.appendChild(tooltipEl);
     }
     const resolvedMode = mode === 'dark' ? 'dark' : 'light';
-    const background = resolvedMode === 'dark'
+    const computedBackground = background || (resolvedMode === 'dark'
       ? 'linear-gradient(135deg, rgba(15,23,42,0.94) 0%, rgba(15,23,42,0.88) 100%)'
-      : 'linear-gradient(135deg, rgba(248,250,252,0.98) 0%, rgba(255,255,255,0.96) 100%)';
-    const border = resolvedMode === 'dark'
+      : 'linear-gradient(135deg, rgba(248,250,252,0.98) 0%, rgba(255,255,255,0.96) 100%)');
+    const computedBorder = border || (resolvedMode === 'dark'
       ? '1px solid rgba(100, 116, 139, 0.35)'
-      : '1px solid rgba(148, 163, 184, 0.45)';
-    const boxShadow = resolvedMode === 'dark'
+      : '1px solid rgba(148, 163, 184, 0.45)');
+    const computedBoxShadow = boxShadow || (resolvedMode === 'dark'
       ? '0 18px 48px rgba(15, 23, 42, 0.55)'
-      : '0 18px 44px rgba(15, 23, 42, 0.15)';
-    tooltipEl.style.background = background;
-    tooltipEl.style.border = border;
-    tooltipEl.style.boxShadow = boxShadow;
+      : '0 18px 44px rgba(15, 23, 42, 0.15)');
+    tooltipEl.style.background = computedBackground;
+    tooltipEl.style.border = computedBorder;
+    tooltipEl.style.boxShadow = computedBoxShadow;
     tooltipEl.style.minWidth = typeof minWidth === 'number' ? `${minWidth}px` : String(minWidth);
     tooltipEl.style.color = textColor || (resolvedMode === 'dark' ? '#e2e8f0' : '#1f2937');
     return tooltipEl;
@@ -1157,6 +1200,86 @@
     return new Chart(ctx, chartConfig);
   }
 
+  function buildMergeColabColorConfig(palette, mode) {
+    const basePalette = palette && palette.length ? palette : buildPalette(4, null, mode);
+    const baseColors = [
+      basePalette[0] || '#2563eb',
+      basePalette[2] || adjustColor(basePalette[0] || '#2563eb', mode === 'dark' ? -0.1 : 0.1)
+    ];
+    const softAlpha = mode === 'dark' ? 0.78 : 0.68;
+    const hoverAlpha = mode === 'dark' ? 0.88 : 0.78;
+    const colors = baseColors.map((color, idx) => {
+      const softened = shiftColor(color, {
+        l: mode === 'dark' ? 0.08 : 0.16,
+        s: mode === 'dark' ? -0.05 : -0.12,
+        h: idx === 1 ? 6 : 0
+      });
+      return hexToRgba(softened || color, softAlpha);
+    });
+    const hoverColors = baseColors.map((color, idx) => {
+      const boosted = shiftColor(color, {
+        l: mode === 'dark' ? 0.18 : -0.05,
+        s: mode === 'dark' ? -0.02 : -0.05,
+        h: idx === 1 ? -4 : 2
+      });
+      return hexToRgba(boosted || color, hoverAlpha);
+    });
+    const borderColors = baseColors.map((color) => adjustColor(color, mode === 'dark' ? -0.35 : -0.25));
+    const legendColor = mode === 'dark' ? '#cbd5f5' : '#1f2937';
+    const textColor = mode === 'dark' ? '#e2e8f0' : '#0f172a';
+    const subtleColor = mode === 'dark' ? 'rgba(148, 163, 184, 0.78)' : 'rgba(100, 116, 139, 0.86)';
+    return { baseColors, colors, hoverColors, borderColors, legendColor, textColor, subtleColor };
+  }
+
+  function createMergeColabTooltip(labels, rawValues, total, baseColors, mode, textColor, subtleColor) {
+    const dividerColor = mode === 'dark' ? 'rgba(100, 116, 139, 0.3)' : 'rgba(148, 163, 184, 0.35)';
+    return (context) => {
+      const { chart, tooltip } = context;
+      const tooltipEl = ensureTooltipEl(chart, { mode, textColor, minWidth: 240 });
+      if (!tooltipEl) return;
+      if (!tooltip || tooltip.opacity === 0 || !tooltip.dataPoints || !tooltip.dataPoints.length) {
+        tooltipEl.style.opacity = '0';
+        return;
+      }
+
+      const dataPoint = tooltip.dataPoints[0];
+      const idx = dataPoint.dataIndex ?? 0;
+      const label = labels[idx] || dataPoint.label || '';
+      const value = rawValues[idx] || 0;
+      const perc = total > 0 ? (value / total) * 100 : 0;
+      const accent = baseColors[idx] || baseColors[0] || '#2563eb';
+      const participationColor = adjustColor(accent, mode === 'dark' ? 0.15 : -0.04);
+
+      tooltipEl.innerHTML = `
+        <div style="display:flex; flex-direction:column; gap:10px;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="display:inline-flex; width:14px; height:14px; border-radius:999px; background:${accent}; box-shadow:0 0 0 4px ${hexToRgba(accent, 0.18)};"></span>
+            <div style="font-weight:700; font-size:14px;">${label}</div>
+          </div>
+          <div style="display:flex; flex-direction:column; gap:6px; font-size:13px;">
+            <div style="display:flex; justify-content:space-between; gap:16px;">
+              <span style="color:${subtleColor};">Colaboradores</span>
+              <strong style="font-weight:700;">${value.toLocaleString('pt-BR')}</strong>
+            </div>
+            <div style="display:flex; justify-content:space-between; gap:16px; color:${participationColor};">
+              <span>Participação</span>
+              <strong>${perc.toFixed(1)}%</strong>
+            </div>
+          </div>
+          <div style="border-top:1px solid ${dividerColor}; padding-top:6px; font-size:11px; color:${subtleColor};">
+            Total analisado: ${total.toLocaleString('pt-BR')} colaboradores treinados
+          </div>
+        </div>
+      `;
+
+      const { offsetLeft, offsetTop } = chart.canvas;
+      tooltipEl.style.opacity = '1';
+      tooltipEl.style.left = `${offsetLeft + tooltip.caretX}px`;
+      tooltipEl.style.top = `${offsetTop + tooltip.caretY}px`;
+      tooltipEl.style.transform = 'translate(-50%, calc(-100% - 18px))';
+    };
+  }
+
   function renderMergeColabPercent(ctx, palette, mode) {
     const container = ctx?.canvas?.closest('.chart-wrapper');
     if (!MERGE_COLAB_PERCENT || !Array.isArray(MERGE_COLAB_PERCENT.values)) {
@@ -1179,70 +1302,16 @@
       return null;
     }
 
-    const basePalette = palette && palette.length ? palette : buildPalette(4, null, mode);
-    const softAlpha = mode === 'dark' ? 0.78 : 0.68;
-    const hoverAlpha = mode === 'dark' ? 0.88 : 0.78;
-    const baseColors = [
-      basePalette[0] || '#2563eb',
-      basePalette[2] || adjustColor(basePalette[0] || '#2563eb', mode === 'dark' ? -0.1 : 0.1)
-    ];
-    const colors = baseColors.map((color, idx) => {
-      const softened = shiftColor(color, { l: mode === 'dark' ? 0.08 : 0.16, s: mode === 'dark' ? -0.05 : -0.12, h: idx === 1 ? 6 : 0 });
-      return hexToRgba(softened || color, softAlpha);
-    });
-    const hoverColors = baseColors.map((color, idx) => {
-      const boosted = shiftColor(color, { l: mode === 'dark' ? 0.18 : -0.05, s: mode === 'dark' ? -0.02 : -0.05, h: idx === 1 ? -4 : 2 });
-      return hexToRgba(boosted || color, hoverAlpha);
-    });
-    const borderColors = baseColors.map((color) => adjustColor(color, mode === 'dark' ? -0.35 : -0.25));
-    const legendColor = mode === 'dark' ? '#cbd5f5' : '#1f2937';
-    const textColor = mode === 'dark' ? '#e2e8f0' : '#0f172a';
-    const subtleColor = mode === 'dark' ? 'rgba(148, 163, 184, 0.78)' : 'rgba(100, 116, 139, 0.86)';
-
-    const externalTooltipHandler = (context) => {
-      const { chart, tooltip } = context;
-      const tooltipEl = ensureTooltipEl(chart, { mode, textColor, minWidth: 240 });
-      if (!tooltipEl) return;
-      if (!tooltip || tooltip.opacity === 0 || !tooltip.dataPoints || !tooltip.dataPoints.length) {
-        tooltipEl.style.opacity = '0';
-        return;
-      }
-
-      const dataPoint = tooltip.dataPoints[0];
-      const idx = dataPoint.dataIndex ?? 0;
-      const label = labels[idx] || dataPoint.label || '';
-      const value = rawValues[idx] || 0;
-      const perc = total > 0 ? (value / total) * 100 : 0;
-      const accent = baseColors[idx] || baseColors[0] || '#2563eb';
-
-      tooltipEl.innerHTML = `
-        <div style="display:flex; flex-direction:column; gap:10px;">
-          <div style="display:flex; align-items:center; gap:8px;">
-            <span style="display:inline-flex; width:14px; height:14px; border-radius:999px; background:${accent}; box-shadow:0 0 0 4px ${hexToRgba(accent, 0.18)};"></span>
-            <div style="font-weight:700; font-size:14px;">${label}</div>
-          </div>
-          <div style="display:flex; flex-direction:column; gap:6px; font-size:13px;">
-            <div style="display:flex; justify-content:space-between; gap:16px;">
-              <span style="color:${subtleColor};">Colaboradores</span>
-              <strong style="font-weight:700;">${value.toLocaleString('pt-BR')}</strong>
-            </div>
-            <div style="display:flex; justify-content:space-between; gap:16px; color:${adjustColor(accent, mode === 'dark' ? 0.15 : -0.04)};">
-              <span>Participação</span>
-              <strong>${perc.toFixed(1)}%</strong>
-            </div>
-          </div>
-          <div style="border-top:1px solid ${mode === 'dark' ? 'rgba(100, 116, 139, 0.3)' : 'rgba(148, 163, 184, 0.35)'}; padding-top:6px; font-size:11px; color:${subtleColor};">
-            Total analisado: ${total.toLocaleString('pt-BR')} colaboradores treinados
-          </div>
-        </div>
-      `;
-
-      const { offsetLeft, offsetTop } = chart.canvas;
-      tooltipEl.style.opacity = '1';
-      tooltipEl.style.left = `${offsetLeft + tooltip.caretX}px`;
-      tooltipEl.style.top = `${offsetTop + tooltip.caretY}px`;
-      tooltipEl.style.transform = 'translate(-50%, calc(-100% - 18px))';
-    };
+    const {
+      baseColors,
+      colors,
+      hoverColors,
+      borderColors,
+      legendColor,
+      textColor,
+      subtleColor
+    } = buildMergeColabColorConfig(palette, mode);
+    const externalTooltipHandler = createMergeColabTooltip(labels, rawValues, total, baseColors, mode, textColor, subtleColor);
 
     return new Chart(ctx, {
       type: 'pie',
@@ -1255,9 +1324,10 @@
             backgroundColor: colors,
             borderColor: borderColors,
             borderWidth: 1.5,
+            hoverBackgroundColor: hoverColors,
             hoverBorderWidth: 1.5,
             hoverOffset: 8,
-            hoverBackgroundColor: hoverColors
+            hoverBorderColor: borderColors
           }
         ]
       },
@@ -1302,10 +1372,154 @@
     });
   }
 
+  function renderMergeColabBar(ctx, palette, mode) {
+    const container = ctx?.canvas?.closest('.chart-wrapper');
+    if (!MERGE_COLAB_PERCENT || !Array.isArray(MERGE_COLAB_PERCENT.values)) {
+      if (container) {
+        container.innerHTML = '<div class="text-muted text-center py-5">Nenhum dado disponível para calcular colaboradores treinados.</div>';
+      }
+      return null;
+    }
+
+    const labels = Array.isArray(MERGE_COLAB_PERCENT.labels) && MERGE_COLAB_PERCENT.labels.length
+      ? MERGE_COLAB_PERCENT.labels
+      : ['Com execução por Voz', 'Sem execução por Voz'];
+    const rawValues = MERGE_COLAB_PERCENT.values.map((value) => Number.parseFloat(value) || 0);
+    const total = rawValues.reduce((sum, value) => sum + Math.max(0, value), 0);
+
+    if (!total) {
+      if (container) {
+        container.innerHTML = '<div class="text-muted text-center py-5">Nenhum colaborador treinado encontrado na planilha recente.</div>';
+      }
+      return null;
+    }
+
+    const {
+      baseColors,
+      colors,
+      hoverColors,
+      borderColors,
+      subtleColor,
+      textColor
+    } = buildMergeColabColorConfig(palette, mode);
+    const externalTooltipHandler = createMergeColabTooltip(labels, rawValues, total, baseColors, mode, textColor, subtleColor);
+
+    const wrapLabel = (label) => {
+      if (!label) return '';
+      const words = String(label).split(/\s+/);
+      const lines = [];
+      let current = '';
+      const limit = 14;
+      words.forEach((word) => {
+        const candidate = current ? `${current} ${word}` : word;
+        if (candidate.length > limit) {
+          if (current) {
+            lines.push(current);
+            current = word;
+          } else {
+            lines.push(candidate);
+            current = '';
+          }
+        } else {
+          current = candidate;
+        }
+      });
+      if (current) {
+        lines.push(current);
+      }
+      return lines;
+    };
+
+    return new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: 'Colaboradores Treinados',
+            data: rawValues,
+            backgroundColor: colors,
+            borderColor: borderColors,
+            borderWidth: 1.5,
+            borderRadius: 10,
+            maxBarThickness: 64,
+            hoverBackgroundColor: hoverColors,
+            hoverBorderColor: borderColors,
+            hoverBorderWidth: 1.5
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        layout: {
+          padding: { top: 8, right: 12, bottom: 4, left: 12 }
+        },
+        indexAxis: 'y',
+        scales: {
+          x: {
+            ticks: {
+              color: subtleColor,
+              font: { weight: 600 }
+            },
+            grid: {
+              color: mode === 'dark' ? 'rgba(148, 163, 184, 0.18)' : 'rgba(15, 23, 42, 0.08)'
+            }
+          },
+          y: {
+            beginAtZero: true,
+            ticks: {
+              color: subtleColor,
+              precision: 0,
+              callback(value) {
+                const label = this.getLabelForValue(value);
+                const wrapped = wrapLabel(label);
+                return wrapped && wrapped.length ? wrapped : label;
+              }
+            },
+            grid: {
+              display: false
+            },
+            border: { display: false }
+          }
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            enabled: false,
+            external: externalTooltipHandler
+          },
+          datalabels: {
+            anchor: 'end',
+            align: 'end',
+            offset: -38,
+            clamp: true,
+            backgroundColor: (context) => {
+              const base = baseColors[context.dataIndex] || '#2563eb';
+              return hexToRgba(adjustColor(base, -0.25), mode === 'dark' ? 0.82 : 0.72);
+            },
+            color: (context) => getReadableTextColor(baseColors[context.dataIndex] || '#2563eb'),
+            borderRadius: 8,
+            padding: { top: 6, bottom: 6, left: 8, right: 8 },
+            font: { weight: '700', size: 12 },
+            formatter: (value) => {
+              if (!value || value <= 0) return '';
+              const perc = total > 0 ? (value / total) * 100 : 0;
+              if (perc < 4) return '';
+              const qty = Number.isFinite(value) ? Math.round(value).toLocaleString('pt-BR') : value;
+              return `${qty} • ${perc.toFixed(1)}%`;
+            }
+          }
+        }
+      }
+    });
+  }
+
   function mountMergeCharts(force = false) {
     if (!ensureChartSetup()) return;
     const canvas = document.getElementById('chart-merge-colab-percent');
-    if (!canvas) return;
+    const barCanvas = document.getElementById('chart-merge-colab');
+    if (!canvas && !barCanvas) return;
     if (window.AppPanel.mergeMounted && !force) return;
 
     const mode = document.documentElement.dataset.bsTheme === 'dark' ? 'dark' : 'light';
@@ -1326,9 +1540,27 @@
       delete window.AppPanel.charts.mergeColabPercent;
     }
 
-    const chart = renderMergeColabPercent(canvas.getContext('2d'), palette, mode);
-    if (chart) {
-      window.AppPanel.charts.mergeColabPercent = chart;
+    if (canvas) {
+      const chart = renderMergeColabPercent(canvas.getContext('2d'), palette, mode);
+      if (chart) {
+        window.AppPanel.charts.mergeColabPercent = chart;
+      }
+    }
+
+    if (window.AppPanel.charts.mergeColabBar) {
+      try {
+        window.AppPanel.charts.mergeColabBar.destroy();
+      } catch (err) {
+        console.warn('Falha ao destruir gráfico de colaboradores treinados', err);
+      }
+      delete window.AppPanel.charts.mergeColabBar;
+    }
+
+    if (barCanvas) {
+      const barChart = renderMergeColabBar(barCanvas.getContext('2d'), palette, mode);
+      if (barChart) {
+        window.AppPanel.charts.mergeColabBar = barChart;
+      }
     }
 
     window.AppPanel.mergeMounted = true;
