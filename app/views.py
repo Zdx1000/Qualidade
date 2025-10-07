@@ -3,6 +3,7 @@ import math
 import re
 import unicodedata
 import pandas as pd
+from io import BytesIO
 from pathlib import Path
 from datetime import datetime, timedelta
 
@@ -37,6 +38,183 @@ def normalize_matricula(value):
         return numeric
     except (ValueError, TypeError):
         return None
+
+
+def normalize_situacao_hc(value):
+    """Normaliza os rótulos da coluna "Situação HC" para uso consistente no painel."""
+    temporario_label = 'Tempórario'
+    if value is None:
+        return temporario_label
+
+    try:
+        text = str(value).strip()
+    except Exception:
+        return temporario_label
+
+    if not text:
+        return temporario_label
+
+    lowered = text.lower()
+    if lowered in {'nan', 'none', 'null'}:
+        return temporario_label
+
+    normalized = unicodedata.normalize('NFKD', text).encode('ASCII', 'ignore').decode('ASCII')
+    normalized = normalized.replace('\\', '/').upper()
+    normalized = re.sub(r'\s+', ' ', normalized).strip()
+
+    if not normalized:
+        return temporario_label
+
+    if normalized in {'N/D', 'ND', 'N A', 'N/A'}:
+        return temporario_label
+
+    if normalized in {'SEM INFORMACAO', 'SEM INFORMACOES', 'SEM NADA', 'SEM DADO', 'SEM DADOS', 'SEM REGISTRO'}:
+        return temporario_label
+
+    if normalized == 'ATIVIDADE NORMAL':
+        return 'Ativo'
+
+    if normalized.startswith('AFASTAMENTO'):
+        return 'Afastado'
+
+    if normalized.startswith('FERIAS'):
+        return 'Férias'
+
+    if normalized.startswith('RESCISAO'):
+        return 'Rescisão'
+
+    return text
+
+
+def build_execucao_por_voz_lookup(df: pd.DataFrame | None):
+    """Constrói uma tabela auxiliar com "Execução por Voz" indexada por Matrícula."""
+    if df is None:
+        return None
+
+    required_columns = {'Funcionário', 'Execução por Voz'}
+    if not required_columns.issubset(df.columns):
+        return None
+
+    lookup = df[['Funcionário', 'Execução por Voz']].copy()
+    lookup['Funcionário'] = lookup['Funcionário'].apply(normalize_matricula)
+    lookup = lookup[lookup['Funcionário'].notna()].copy()
+    if lookup.empty:
+        return None
+
+    try:
+        lookup['Funcionário'] = lookup['Funcionário'].astype(int)
+    except Exception:
+        pass
+
+    def normalize_execucao(value):
+        if pd.isna(value):
+            return ''
+        text = str(value).strip()
+        lowered = text.lower()
+        if lowered in {'', 'nan', 'none', 'null'}:
+            return ''
+        return text
+
+    lookup['Execução por Voz'] = lookup['Execução por Voz'].apply(normalize_execucao)
+    lookup['__priority'] = lookup['Execução por Voz'].eq('').astype(int)
+    lookup = (
+        lookup
+        .sort_values(['Funcionário', '__priority', 'Execução por Voz'])
+        .drop_duplicates(subset=['Funcionário'], keep='first')
+        .drop(columns='__priority')
+    )
+
+    return lookup.rename(columns={'Funcionário': 'Matrícula'})
+
+
+def get_input_column_definitions():
+    return [
+        {"name": "Do Endereço", "param": "do_endereco", "icon": "geo-alt", "placeholder": "Endereço"},
+        {"name": "Funcionário", "param": "funcionario", "icon": "hash", "placeholder": "Funcionário"},
+        {"name": "Nome", "param": "nome", "icon": "person", "placeholder": "Nome"},
+        {"name": "Data", "param": "data", "icon": "calendar-event", "placeholder": "Data"},
+        {"name": "Execução por Voz", "param": "execucao", "icon": "mic", "placeholder": "Execução"},
+        {"name": "Treinado", "param": "treinado", "icon": "mortarboard", "placeholder": "Treinado"},
+    ]
+
+
+def slugify_column(label):
+    if label is None:
+        return ''
+    text = str(label)
+    normalized = unicodedata.normalize('NFKD', text)
+    ascii_text = ''.join(ch for ch in normalized if not unicodedata.combining(ch))
+    slug = re.sub(r'[^a-z0-9]+', '_', ascii_text.lower()).strip('_')
+    return slug or 'col'
+
+
+def sort_dataframe(df, column, ascending=True):
+    if column not in df.columns or df.empty:
+        return df
+    series = df[column]
+    numeric_series = pd.to_numeric(series, errors='coerce')
+    if numeric_series.notna().any():
+        sort_key = numeric_series
+    else:
+        datetime_series = pd.to_datetime(series, errors='coerce')
+        if datetime_series.notna().any():
+            sort_key = datetime_series
+        else:
+            sort_key = series.astype(str).str.lower()
+    sorted_df = df.assign(__sort_key=sort_key)
+    sorted_df = sorted_df.sort_values('__sort_key', ascending=ascending, na_position='last', kind='mergesort')
+    return sorted_df.drop(columns='__sort_key')
+
+
+def dataframe_to_excel_response(df: pd.DataFrame, *, filename_prefix: str, sheet_name: str):
+    if df is None:
+        df = pd.DataFrame()
+    df = df.copy()
+    try:
+        from openpyxl.styles import Alignment, Font, PatternFill
+        from openpyxl.utils import get_column_letter
+    except ImportError as exc:
+        raise RuntimeError('Dependência openpyxl não encontrada. Instale com: pip install openpyxl') from exc
+
+    buffer = BytesIO()
+    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+        df.to_excel(writer, sheet_name=sheet_name, index=False)
+        workbook = writer.book
+        worksheet = writer.sheets[sheet_name]
+
+        header_font = Font(bold=True, color='FFFFFFFF')
+        header_fill = PatternFill(start_color='FF0D6EFD', end_color='FF0D6EFD', fill_type='solid')
+        header_alignment = Alignment(horizontal='center', vertical='center')
+        for cell in next(worksheet.iter_rows(min_row=1, max_row=1)):
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = header_alignment
+
+        worksheet.freeze_panes = 'A2'
+
+        for idx, column in enumerate(df.columns, start=1):
+            try:
+                series = df[column].astype(str)
+                max_length = series.map(len).max()
+            except Exception:
+                max_length = None
+            header_length = len(str(column))
+            if max_length is None or pd.isna(max_length):
+                max_length = 0
+            width = min(max(header_length, max_length) + 2, 60)
+            worksheet.column_dimensions[get_column_letter(idx)].width = width
+
+        worksheet.auto_filter.ref = worksheet.dimensions
+
+    buffer.seek(0)
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f"{filename_prefix}_{timestamp}.xlsx"
+    return send_file(
+        buffer,
+        as_attachment=True,
+        download_name=filename,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
 
 def manipular_dados(df):
     """Prepara o DF da planilha e faz merge com o banco (apenas tipo TALKMAN) por Matrícula.
@@ -670,6 +848,7 @@ def input_dados():
                     "Situação": "Situação HC",
                     "Turno": "Turno HC"
                 })
+                display_df['Situação HC'] = display_df['Situação HC'].apply(normalize_situacao_hc)
                 display_df['Matrícula'] = display_df['Matrícula'].apply(normalize_matricula)
                 display_df = display_df[display_df['Matrícula'].notna()].copy()
                 try:
@@ -880,6 +1059,8 @@ def painel_grafico(planilha=None):
             q = q.filter(Colaborador.data <= sel_max)
         if selected_turno and selected_turno != 'all':
             q = q.filter(Colaborador.turno == selected_turno)
+        if selected_tipo and selected_tipo != 'all':
+            q = q.filter(Colaborador.tipo == selected_tipo)
 
         total_colaboradores = q.count()
 
@@ -894,6 +1075,8 @@ def painel_grafico(planilha=None):
             q_setor = q_setor.filter(Colaborador.data <= sel_max)
         if selected_turno and selected_turno != 'all':
             q_setor = q_setor.filter(Colaborador.turno == selected_turno)
+        if selected_tipo and selected_tipo != 'all':
+            q_setor = q_setor.filter(Colaborador.tipo == selected_tipo)
         q_setor = q_setor.filter(Colaborador.setor.isnot(None)).group_by(Colaborador.setor).order_by(func.count(func.distinct(Colaborador.matricula)).desc())
         setor_rows = q_setor.all()
         setor_labels = [r.setor for r in setor_rows]
@@ -910,6 +1093,8 @@ def painel_grafico(planilha=None):
             q_tipo_resumo = q_tipo_resumo.filter(Colaborador.data <= sel_max)
         if selected_turno and selected_turno != 'all':
             q_tipo_resumo = q_tipo_resumo.filter(Colaborador.turno == selected_turno)
+        if selected_tipo and selected_tipo != 'all':
+            q_tipo_resumo = q_tipo_resumo.filter(Colaborador.tipo == selected_tipo)
         q_tipo_resumo = (
             q_tipo_resumo
             .filter(Colaborador.tipo.isnot(None))
@@ -930,6 +1115,8 @@ def painel_grafico(planilha=None):
             q_turno = q_turno.filter(Colaborador.data <= sel_max)
         if selected_turno and selected_turno != 'all':
             q_turno = q_turno.filter(Colaborador.turno == selected_turno)
+        if selected_tipo and selected_tipo != 'all':
+            q_turno = q_turno.filter(Colaborador.tipo == selected_tipo)
         q_turno = q_turno.filter(Colaborador.turno.isnot(None)).group_by(Colaborador.turno).order_by(func.count(Colaborador.matricula).desc())
         turno_rows = q_turno.all()
         turno_labels = [r.turno for r in turno_rows]
@@ -946,6 +1133,8 @@ def painel_grafico(planilha=None):
             q_setor_total = q_setor_total.filter(Colaborador.data <= sel_max)
         if selected_turno and selected_turno != 'all':
             q_setor_total = q_setor_total.filter(Colaborador.turno == selected_turno)
+        if selected_tipo and selected_tipo != 'all':
+            q_setor_total = q_setor_total.filter(Colaborador.tipo == selected_tipo)
         q_setor_total = (
             q_setor_total
             .filter(Colaborador.setor.isnot(None))
@@ -966,6 +1155,9 @@ def painel_grafico(planilha=None):
         if selected_turno and selected_turno != 'all':
             min_data = min_data.filter(Colaborador.turno == selected_turno)
             max_data = max_data.filter(Colaborador.turno == selected_turno)
+        if selected_tipo and selected_tipo != 'all':
+            min_data = min_data.filter(Colaborador.tipo == selected_tipo)
+            max_data = max_data.filter(Colaborador.tipo == selected_tipo)
         min_data = min_data.scalar()
         max_data = max_data.scalar()
 
@@ -1030,15 +1222,6 @@ def painel_grafico(planilha=None):
         stacked_categories = []
         stacked_series = []
 
-    def slugify_column(label):
-        if label is None:
-            return ''
-        text = str(label)
-        normalized = unicodedata.normalize('NFKD', text)
-        ascii_text = ''.join(ch for ch in normalized if not unicodedata.combining(ch))
-        slug = re.sub(r'[^a-z0-9]+', '_', ascii_text.lower()).strip('_')
-        return slug or 'col'
-
     def build_query_args(skip_keys=None, overrides=None):
         skip = set(skip_keys or [])
         base = {k: v for k, v in request.args.to_dict(flat=True).items() if v not in (None, '') and k not in skip}
@@ -1046,31 +1229,7 @@ def painel_grafico(planilha=None):
             base.update(overrides)
         return base
 
-    def sort_dataframe(df, column, ascending=True):
-        if column not in df.columns or df.empty:
-            return df
-        series = df[column]
-        numeric_series = pd.to_numeric(series, errors='coerce')
-        if numeric_series.notna().any():
-            sort_key = numeric_series
-        else:
-            datetime_series = pd.to_datetime(series, errors='coerce')
-            if datetime_series.notna().any():
-                sort_key = datetime_series
-            else:
-                sort_key = series.astype(str).str.lower()
-        sorted_df = df.assign(__sort_key=sort_key)
-        sorted_df = sorted_df.sort_values('__sort_key', ascending=ascending, na_position='last', kind='mergesort')
-        return sorted_df.drop(columns='__sort_key')
-
-    input_column_definitions = [
-        {"name": "Do Endereço", "param": "do_endereco", "icon": "geo-alt", "placeholder": "Endereço"},
-        {"name": "Funcionário", "param": "funcionario", "icon": "hash", "placeholder": "Funcionário"},
-        {"name": "Nome", "param": "nome", "icon": "person", "placeholder": "Nome"},
-        {"name": "Data", "param": "data", "icon": "calendar-event", "placeholder": "Data"},
-        {"name": "Execução por Voz", "param": "execucao", "icon": "mic", "placeholder": "Execução"},
-        {"name": "Treinado", "param": "treinado", "icon": "mortarboard", "placeholder": "Treinado"},
-    ]
+    input_column_definitions = get_input_column_definitions()
     input_table_columns = [col["name"] for col in input_column_definitions]
     input_table_rows = []
     input_table_total = 0
@@ -1244,6 +1403,10 @@ def painel_grafico(planilha=None):
         skip_keys={'input_page', 'input_sort', 'input_order'} | input_filter_keys,
         overrides={'tab': 'input', 'input_filter': 'separacao'}
     )
+    input_export_args = build_query_args(
+        skip_keys={'input_page'},
+        overrides={'tab': 'input', 'input_filter': 'separacao'}
+    )
 
     hc_merged_rows = []
     hc_merged_columns = []
@@ -1291,6 +1454,21 @@ def painel_grafico(planilha=None):
                 pass
 
             merged_hc = pd.merge(df_db, source_hc, on='Matrícula', how='left')
+
+            execucao_lookup = build_execucao_por_voz_lookup(source_df)
+            if execucao_lookup is not None:
+                merged_hc = pd.merge(
+                    merged_hc,
+                    execucao_lookup,
+                    on='Matrícula',
+                    how='left'
+                )
+            if 'Situação HC' in merged_hc.columns:
+                merged_hc['Situação HC'] = merged_hc['Situação HC'].apply(normalize_situacao_hc)
+            if {'Turno HC', 'Turno', 'Situação HC'}.issubset(merged_hc.columns):
+                temporario_mask = merged_hc['Situação HC'] == 'Tempórario'
+                if temporario_mask.any():
+                    merged_hc.loc[temporario_mask, 'Turno HC'] = merged_hc.loc[temporario_mask, 'Turno']
             cargo_hc_column = 'Cargo HC' if 'Cargo HC' in merged_hc.columns else None
             if cargo_hc_column:
                 with_hc = int(merged_hc[cargo_hc_column].notna().sum())
@@ -1398,6 +1576,10 @@ def painel_grafico(planilha=None):
         skip_keys={'hc_page', 'hc_sort', 'hc_order'} | hc_filter_keys,
         overrides={'tab': 'input', 'input_filter': 'hc'}
     )
+    hc_export_args = build_query_args(
+        skip_keys={'hc_page'},
+        overrides={'tab': 'input', 'input_filter': 'hc'}
+    )
 
     return render_template(
         'painel_grafico.html',
@@ -1441,6 +1623,7 @@ def painel_grafico(planilha=None):
         input_sort=input_sort,
         input_order=input_order,
         input_form_args=input_form_args,
+        input_export_args=input_export_args,
         hc_merged_columns=hc_merged_columns,
         hc_merged_rows=hc_merged_rows,
         hc_preview_info=hc_preview_info,
@@ -1455,4 +1638,170 @@ def painel_grafico(planilha=None):
         hc_sort=hc_sort,
         hc_order=hc_order,
         hc_form_args=hc_form_args,
+        hc_export_args=hc_export_args,
     )
+
+
+@bp.route('/painel-grafico/export/separacao', methods=['GET'])
+def export_input_separacao():
+    try:
+        source_df = last_planilha
+    except NameError:
+        source_df = None
+
+    if source_df is None:
+        flash('Nenhuma planilha de separação carregada para exportação.', 'warning')
+        return redirect(url_for('main.painel_grafico', tab='input', input_filter='separacao'))
+
+    definitions = get_input_column_definitions()
+    columns = [col['name'] for col in definitions]
+
+    try:
+        export_df = source_df.copy()
+    except Exception as err:
+        current_app.logger.exception('Falha ao copiar planilha de separação para exportação: %s', err)
+        flash(f'Falha ao preparar dados para exportação: {err}', 'danger')
+        return redirect(url_for('main.painel_grafico', tab='input', input_filter='separacao'))
+
+    for column in columns:
+        if column not in export_df.columns:
+            default_value = 'Não' if column == 'Treinado' else ''
+            export_df[column] = default_value
+
+    export_df = export_df[columns].copy()
+
+    filters = {}
+    for definition in definitions:
+        filter_value = (request.args.get(f"input_filter_{definition['param']}") or '').strip()
+        if filter_value:
+            filters[definition['name']] = filter_value
+
+    for column, value in filters.items():
+        try:
+            series = export_df[column].astype(str).fillna('')
+            export_df = export_df[series.str.contains(value, case=False, na=False)]
+        except Exception as err:
+            current_app.logger.warning('Falha ao aplicar filtro "%s" na exportação: %s', column, err)
+
+    input_sort = (request.args.get('input_sort') or '').strip()
+    input_order = (request.args.get('input_order') or 'asc').lower()
+    valid_sorts = {col['param'] for col in definitions}
+    if input_sort in valid_sorts:
+        sort_column = next((col['name'] for col in definitions if col['param'] == input_sort), None)
+        if sort_column:
+            ascending = input_order != 'desc'
+            try:
+                export_df = sort_dataframe(export_df, sort_column, ascending=ascending)
+            except Exception as err:
+                current_app.logger.warning('Falha ao ordenar exportação por %s: %s', sort_column, err)
+
+    export_df = export_df.fillna('')
+
+    try:
+        return dataframe_to_excel_response(export_df, filename_prefix='input_dados', sheet_name='Separacao')
+    except RuntimeError as err:
+        flash(str(err), 'danger')
+        return redirect(url_for('main.painel_grafico', tab='input', input_filter='separacao'))
+
+
+@bp.route('/painel-grafico/export/hc', methods=['GET'])
+def export_input_hc():
+    try:
+        source_hc = last_planilha_hc
+    except NameError:
+        source_hc = None
+
+    if source_hc is None:
+        flash('Nenhuma planilha HC carregada para exportação.', 'warning')
+        return redirect(url_for('main.painel_grafico', tab='input', input_filter='hc'))
+
+    try:
+        bind = db.session.get_bind()
+        stmt = select(
+            Colaborador.matricula.label("Matrícula"),
+            Colaborador.nome.label("Nome"),
+            Colaborador.tipo.label("Tipo"),
+            Colaborador.setor.label("Setor"),
+            Colaborador.area.label("Área"),
+            Colaborador.turno.label("Turno"),
+            Colaborador.supervisor.label("Supervisor"),
+            Colaborador.integracao.label("Integração"),
+            Colaborador.data.label("Data"),
+        )
+        df_db = pd.read_sql(stmt, bind)
+    except Exception as err:
+        current_app.logger.exception('Falha ao carregar dados do banco para exportação HC: %s', err)
+        flash(f'Falha ao carregar dados do banco para exportação: {err}', 'danger')
+        return redirect(url_for('main.painel_grafico', tab='input', input_filter='hc'))
+
+    df_db['Matrícula'] = df_db['Matrícula'].apply(normalize_matricula)
+    df_db = df_db[df_db['Matrícula'].notna()].copy()
+    try:
+        df_db['Matrícula'] = df_db['Matrícula'].astype(int)
+    except Exception:
+        pass
+
+    try:
+        merged_hc = pd.merge(df_db, source_hc, on='Matrícula', how='left')
+    except Exception as err:
+        current_app.logger.exception('Falha ao gerar merge HC para exportação: %s', err)
+        flash(f'Falha ao mesclar dados do banco com HC: {err}', 'danger')
+        return redirect(url_for('main.painel_grafico', tab='input', input_filter='hc'))
+
+    try:
+        source_df = last_planilha
+    except NameError:
+        source_df = None
+
+    execucao_lookup = build_execucao_por_voz_lookup(source_df)
+    if execucao_lookup is not None:
+        merged_hc = pd.merge(merged_hc, execucao_lookup, on='Matrícula', how='left')
+
+    if 'Situação HC' in merged_hc.columns:
+        merged_hc['Situação HC'] = merged_hc['Situação HC'].apply(normalize_situacao_hc)
+    if {'Turno HC', 'Turno', 'Situação HC'}.issubset(merged_hc.columns):
+        temporario_mask = merged_hc['Situação HC'] == 'Tempórário'
+        if temporario_mask.any():
+            merged_hc.loc[temporario_mask, 'Turno HC'] = merged_hc.loc[temporario_mask, 'Turno']
+
+    slug_counts = {}
+    slug_to_column = {}
+    filters = {}
+    for column in merged_hc.columns:
+        base_slug = slugify_column(column)
+        count = slug_counts.get(base_slug, 0)
+        if count:
+            slug = f"{base_slug}_{count + 1}"
+        else:
+            slug = base_slug
+        slug_counts[base_slug] = count + 1
+        slug_to_column[slug] = column
+        value = (request.args.get(f"hc_filter_{slug}") or '').strip()
+        if value:
+            filters[column] = value
+
+    export_df = merged_hc.copy()
+    for column, value in filters.items():
+        try:
+            series = export_df[column].astype(str).fillna('')
+            export_df = export_df[series.str.contains(value, case=False, na=False)]
+        except Exception as err:
+            current_app.logger.warning('Falha ao aplicar filtro "%s" na exportação HC: %s', column, err)
+
+    hc_sort = (request.args.get('hc_sort') or '').strip()
+    hc_order = (request.args.get('hc_order') or 'asc').lower()
+    if hc_sort in slug_to_column:
+        sort_column = slug_to_column[hc_sort]
+        ascending = hc_order != 'desc'
+        try:
+            export_df = sort_dataframe(export_df, sort_column, ascending=ascending)
+        except Exception as err:
+            current_app.logger.warning('Falha ao ordenar exportação HC por %s: %s', sort_column, err)
+
+    export_df = export_df.fillna('')
+
+    try:
+        return dataframe_to_excel_response(export_df, filename_prefix='merge_hc', sheet_name='MergeHC')
+    except RuntimeError as err:
+        flash(str(err), 'danger')
+        return redirect(url_for('main.painel_grafico', tab='input', input_filter='hc'))

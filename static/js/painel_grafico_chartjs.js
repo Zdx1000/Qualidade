@@ -1863,6 +1863,109 @@
     });
   }
 
+  function setupDashboardExport() {
+    const button = document.getElementById('export-dashboard-pdf');
+    if (!button) return;
+
+    const getChartSections = () => {
+      const wrappers = Array.from(document.querySelectorAll('#registros-graficos .chart-wrapper'));
+      return wrappers
+        .map((wrapper) => {
+          const card = wrapper.closest('.card');
+          const titleEl = card?.querySelector('.card-header h6');
+          const title = titleEl ? titleEl.textContent.trim() : 'Gráfico';
+          const hasCanvas = wrapper.querySelector('canvas');
+          return hasCanvas ? { title, element: wrapper } : null;
+        })
+        .filter(Boolean);
+    };
+
+    const setLoadingState = (isLoading) => {
+      if (isLoading) {
+        if (!button.dataset.originalHtml) {
+          button.dataset.originalHtml = button.innerHTML;
+        }
+        button.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Gerando PDF...';
+        button.disabled = true;
+        button.setAttribute('aria-busy', 'true');
+      } else {
+        const html = button.dataset.originalHtml || '<i class="bi bi-file-earmark-pdf me-1"></i>Exportar Dashboard para PDF';
+        button.innerHTML = html;
+        button.disabled = false;
+        button.removeAttribute('aria-busy');
+      }
+    };
+
+    button.addEventListener('click', async () => {
+      const sections = getChartSections();
+      const { jsPDF } = window.jspdf || {};
+      if (!sections.length) {
+        window.alert('Nenhum gráfico disponível para exportação.');
+        return;
+      }
+      if (!jsPDF || typeof window.html2canvas === 'undefined') {
+        window.alert('Não foi possível carregar os recursos de exportação. Recarregue a página e tente novamente.');
+        return;
+      }
+
+      setLoadingState(true);
+
+      try {
+        const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4', compress: false });
+        const margin = 15;
+        const pageWidth = pdf.internal.pageSize.getWidth();
+        const pageHeight = pdf.internal.pageSize.getHeight();
+        let currentY = margin;
+
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(18);
+        pdf.text('Painel Gráfico: Registros', pageWidth / 2, currentY, { align: 'center' });
+        currentY += 12;
+
+        for (const section of sections) {
+          // Aguarda o próximo frame para garantir que estilos estejam aplicados
+          // eslint-disable-next-line no-await-in-loop
+          await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+
+          // eslint-disable-next-line no-await-in-loop
+          const scale = Math.min(6, Math.max(4, (window.devicePixelRatio || 1) * 3));
+          const canvasCapture = await window.html2canvas(section.element, {
+            backgroundColor: '#ffffff',
+            scale,
+            useCORS: true,
+            allowTaint: true,
+            logging: false
+          });
+
+          const imgData = canvasCapture.toDataURL('image/png', 1.0);
+          const availableWidth = pageWidth - margin * 2;
+          const imgHeight = (canvasCapture.height * availableWidth) / canvasCapture.width;
+
+          if (currentY + 10 + imgHeight > pageHeight - margin) {
+            pdf.addPage();
+            currentY = margin;
+          }
+
+          pdf.setFontSize(14);
+          pdf.setTextColor(33, 37, 41);
+          pdf.text(section.title, margin, currentY);
+          currentY += 7;
+
+          pdf.addImage(imgData, 'PNG', margin, currentY, availableWidth, imgHeight, undefined, 'SLOW');
+          currentY += imgHeight + 12;
+        }
+
+        const todayStr = new Date().toISOString().slice(0, 10);
+        pdf.save(`painel-grafico-registros_${todayStr}.pdf`);
+      } catch (error) {
+        console.error('Erro ao exportar dashboard:', error);
+        window.alert('Não foi possível gerar o PDF. Tente novamente.');
+      } finally {
+        setLoadingState(false);
+      }
+    });
+  }
+
   function setupTabs() {
     if (window.AppPanel.tabsBound) return;
     const buttons = Array.from(document.querySelectorAll('.card-header .btn-group [data-target]'));
@@ -1943,6 +2046,7 @@
     mountCharts();
     setupInputFilters();
     setupTableControls();
+    setupDashboardExport();
     if (window.location.hash === '#tab-merge' || new URLSearchParams(window.location.search).get('tab') === 'merge') {
       mountMergeCharts();
     }
