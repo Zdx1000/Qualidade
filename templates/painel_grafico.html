@@ -261,10 +261,18 @@
                           <span class="badge bg-warning bg-opacity-10 text-warning"><i class="bi bi-x-circle me-1"></i>Não</span>
                         {% endif %}
                       </td>
+                      <td>
+                        {% set turno_hc = row["Turno HC"] %}
+                        {% if turno_hc %}
+                          <span class="badge bg-info bg-opacity-10 text-info"><i class="bi bi-clock-history me-1"></i>{{ turno_hc }}</span>
+                        {% else %}
+                          <span class="text-muted">Sem turno</span>
+                        {% endif %}
+                      </td>
                     </tr>
                     {% else %}
                     <tr>
-                      <td colspan="6" class="text-center py-5">
+                      <td colspan="{{ input_column_meta|length }}" class="text-center py-5">
                         <div class="text-muted">
                           <i class="bi bi-inbox" style="font-size: 3rem;"></i>
                           <div class="mt-2">
@@ -569,9 +577,16 @@
               <span class="badge bg-success bg-opacity-10 text-success" style="font-size: 0.7rem; font-weight: 600;">Bar</span>
             </div>
             <div class="card-body">
+              {% if hc_training_chart %}
               <div class="chart-wrapper" style="height: 320px;">
                 <canvas id="chart-merge-hc"></canvas>
               </div>
+              {% else %}
+              <div class="text-muted text-center py-5">
+                <i class="bi bi-bar-chart"> </i>
+                <div class="mt-2 fw-semibold">Carregue uma planilha HC com "Execução por Voz" para visualizar este gráfico.</div>
+              </div>
+              {% endif %}
             </div>
           </div>
         </div>
@@ -595,35 +610,38 @@
       </div>
 
       <div class="row g-3 mt-1">
-        <div class="col-12 col-xxl-6">
+        <div class="col-12">
           <div class="card h-100 shadow-sm">
             <div class="card-header d-flex align-items-center justify-content-between">
               <div class="d-flex align-items-center gap-2">
                 <i class="bi bi-graph-up-arrow fs-5 text-warning"></i>
-                <h6 class="mb-0">Utilização vs Treinamento 1° Turno</h6>
+                <h6 class="mb-0">Utilização vs Treinamento</h6>
               </div>
-              <span class="badge bg-warning bg-opacity-10 text-warning" style="font-size: 0.7rem; font-weight: 600;">Bar</span>
+              <div class="d-flex gap-2">
+                <span class="badge bg-warning bg-opacity-10 text-warning" style="font-size: 0.7rem; font-weight: 600;">1° Turno</span>
+                <span class="badge bg-danger bg-opacity-10 text-danger" style="font-size: 0.7rem; font-weight: 600;">2° Turno</span>
+              </div>
             </div>
             <div class="card-body">
-              <div class="chart-wrapper" style="height: 360px;">
-                <canvas id="chart-merge-turno1"></canvas>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="col-12 col-xxl-6">
-          <div class="card h-100 shadow-sm">
-            <div class="card-header d-flex align-items-center justify-content-between">
-              <div class="d-flex align-items-center gap-2">
-                <i class="bi bi-graph-up fs-5 text-danger"></i>
-                <h6 class="mb-0">Utilização vs Treinamento 2° Turno</h6>
-              </div>
-              <span class="badge bg-danger bg-opacity-10 text-danger" style="font-size: 0.7rem; font-weight: 600;">Bar</span>
-            </div>
-            <div class="card-body">
-              <div class="chart-wrapper" style="height: 360px;">
-                <canvas id="chart-merge-turno2"></canvas>
+              <div class="row g-4">
+                <div class="col-12 col-xl-6">
+                  <div class="d-flex align-items-center justify-content-between mb-2">
+                    <h6 class="mb-0 fw-semibold text-warning">1° Turno</h6>
+                    <span class="badge rounded-pill bg-warning bg-opacity-10 text-warning" style="font-size: 0.65rem;">Bar</span>
+                  </div>
+                  <div class="chart-wrapper" style="height: 320px;">
+                    <canvas id="chart-merge-turno1"></canvas>
+                  </div>
+                </div>
+                <div class="col-12 col-xl-6">
+                  <div class="d-flex align-items-center justify-content-between mb-2">
+                    <h6 class="mb-0 fw-semibold text-danger">2° Turno</h6>
+                    <span class="badge rounded-pill bg-danger bg-opacity-10 text-danger" style="font-size: 0.65rem;">Bar</span>
+                  </div>
+                  <div class="chart-wrapper" style="height: 320px;">
+                    <canvas id="chart-merge-turno2"></canvas>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -822,6 +840,8 @@
   <script id="data-stacked-series" type="application/json">{{ stacked_series|tojson }}</script>
   <script id="data-timeline" type="application/json">{{ timeline_data|tojson }}</script>
   <script id="data-merge-colab-percent" type="application/json">{{ merge_colab_percent|tojson }}</script>
+  <script id="data-merge-turnos" type="application/json">{{ merge_turno_charts|tojson }}</script>
+  <script id="data-merge-hc" type="application/json">{{ hc_training_chart|tojson }}</script>
   <!-- Listas e selecionados para filtros da timeline -->
   <script id="data-available-setores" type="application/json">{{ available_setores|tojson }}</script>
   <script id="data-available-tipos" type="application/json">{{ available_tipos|tojson }}</script>

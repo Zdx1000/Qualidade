@@ -26,6 +26,8 @@
   const maxIndex = TIPO_SERIES.findIndex((value) => value === maxVal);
   const TIMELINE = readJson('data-timeline', []);
   const MERGE_COLAB_PERCENT = readJson('data-merge-colab-percent', null);
+  const MERGE_TURNOS = readJson('data-merge-turnos', null);
+  const MERGE_HC_DATA = readJson('data-merge-hc', null);
   const AVAILABLE_SETORES = readJson('data-available-setores', []);
   const AVAILABLE_TIPOS = readJson('data-available-tipos', []);
   const AVAILABLE_SUPERVISORES = readJson('data-available-supervisores', []);
@@ -1280,6 +1282,284 @@
     };
   }
 
+  function createMergeHCTooltip(labels, totals, overallTotal, mode) {
+    const baseText = mode === 'dark' ? '#e2e8f0' : '#0f172a';
+    const subtle = mode === 'dark' ? 'rgba(148, 163, 184, 0.75)' : 'rgba(100, 116, 139, 0.85)';
+    const divider = mode === 'dark' ? 'rgba(100, 116, 139, 0.32)' : 'rgba(148, 163, 184, 0.32)';
+
+    return (context) => {
+      const { chart, tooltip } = context;
+      const tooltipEl = ensureTooltipEl(chart, { mode, textColor: baseText, minWidth: 280 });
+      if (!tooltipEl) return;
+      if (!tooltip || tooltip.opacity === 0 || !tooltip.dataPoints || !tooltip.dataPoints.length) {
+        tooltipEl.style.opacity = '0';
+        return;
+      }
+
+      const dataPoint = tooltip.dataPoints[0];
+      const idx = dataPoint?.dataIndex ?? 0;
+      const situacao = labels[idx] || dataPoint?.label || 'Situação';
+      const total = Number.isFinite(totals?.[idx]) ? totals[idx] : null;
+
+      let rows = '';
+      tooltip.dataPoints.forEach((point) => {
+        const datasetLabel = point.dataset?.label || 'Execução';
+        const rawValue = Number(point.raw) || 0;
+        const colorSource = point.dataset?.backgroundColor;
+        const segmentColor = Array.isArray(colorSource)
+          ? colorSource[point.dataIndex] || colorSource[0]
+          : colorSource || '#2563eb';
+        rows += `
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:16px;">
+            <span style="display:flex; align-items:center; gap:8px;">
+              <span style="display:inline-flex; width:10px; height:10px; border-radius:999px; background:${segmentColor}; box-shadow:0 0 0 3px ${hexToRgba(normalizeColor(segmentColor) || segmentColor, 0.2)}"></span>
+              <span>${datasetLabel}</span>
+            </span>
+            <strong>${rawValue.toLocaleString('pt-BR')}</strong>
+          </div>`;
+      });
+
+      const totalBlock = total !== null
+        ? `<div style="border-top:1px solid ${divider}; margin-top:10px; padding-top:8px; font-size:12px; display:flex; justify-content:space-between;">
+             <span style="color:${subtle};">Total da situação</span>
+             <strong>${total.toLocaleString('pt-BR')}</strong>
+           </div>`
+        : '';
+
+      const overallBlock = Number.isFinite(overallTotal) && overallTotal > 0
+        ? `<div style="font-size:11px; color:${subtle}; margin-top:4px;">Participação: ${total && overallTotal ? ((total / overallTotal) * 100).toFixed(1) : '0.0'}%</div>`
+        : '';
+
+      tooltipEl.innerHTML = `
+        <div style="display:flex; flex-direction:column; gap:10px;">
+          <div>
+            <div style="font-weight:700; font-size:14px;">${situacao}</div>
+            <div style="font-size:12px; color:${subtle};">Execução por Voz</div>
+          </div>
+          <div style="display:flex; flex-direction:column; gap:6px; font-size:13px;">
+            ${rows}
+          </div>
+          ${totalBlock}
+          ${overallBlock}
+        </div>`;
+
+      const { offsetLeft, offsetTop } = chart.canvas;
+      tooltipEl.style.opacity = '1';
+      tooltipEl.style.left = `${offsetLeft + tooltip.caretX}px`;
+      tooltipEl.style.top = `${offsetTop + tooltip.caretY}px`;
+      tooltipEl.style.transform = 'translate(-50%, calc(-100% - 18px))';
+    };
+  }
+
+  function createMergeTurnoTooltip(labels, totals, overallTotal, mode) {
+    const baseText = mode === 'dark' ? '#e2e8f0' : '#0f172a';
+    const subtle = mode === 'dark' ? 'rgba(148, 163, 184, 0.75)' : 'rgba(100, 116, 139, 0.85)';
+    const divider = mode === 'dark' ? 'rgba(100, 116, 139, 0.32)' : 'rgba(148, 163, 184, 0.28)';
+
+    return ({ chart, tooltip }) => {
+      const tooltipEl = ensureTooltipEl(chart, { mode, textColor: baseText, minWidth: 260 });
+      if (!tooltipEl) return;
+      if (!tooltip || tooltip.opacity === 0 || !tooltip.dataPoints || !tooltip.dataPoints.length) {
+        tooltipEl.style.opacity = '0';
+        return;
+      }
+
+      const dataPoint = tooltip.dataPoints[0];
+      const idx = dataPoint?.dataIndex ?? 0;
+      const label = labels[idx] || dataPoint?.label || 'Data';
+      const total = Number.isFinite(totals?.[idx]) ? totals[idx] : 0;
+
+      let rows = '';
+      tooltip.dataPoints.forEach((point) => {
+        const datasetLabel = point.dataset?.label || 'Série';
+        const rawValue = Number(point.raw) || 0;
+        const baseColor = normalizeColor(point.dataset?._baseColor)
+          || normalizeColor(point.dataset?.backgroundColor)
+          || '#2563eb';
+        rows += `
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:16px;">
+            <span style="display:flex; align-items:center; gap:8px;">
+              <span style="display:inline-flex; width:10px; height:10px; border-radius:999px; background:${baseColor}; box-shadow:0 0 0 3px ${hexToRgba(baseColor, 0.22)}"></span>
+              <span>${datasetLabel}</span>
+            </span>
+            <strong>${rawValue.toLocaleString('pt-BR')}</strong>
+          </div>`;
+      });
+
+      const totalBlock = `
+        <div style="border-top:1px solid ${divider}; margin-top:10px; padding-top:8px; font-size:12px; display:flex; justify-content:space-between;">
+          <span style="color:${subtle};">Total do dia</span>
+          <strong>${total.toLocaleString('pt-BR')}</strong>
+        </div>`;
+
+      const overallBlock = overallTotal > 0
+        ? `<div style="font-size:11px; color:${subtle}; margin-top:4px;">Participação no período: ${total > 0 ? ((total / overallTotal) * 100).toFixed(1) : '0.0'}%</div>`
+        : '';
+
+      tooltipEl.innerHTML = `
+        <div style="display:flex; flex-direction:column; gap:10px;">
+          <div>
+            <div style="font-weight:700; font-size:14px;">${label}</div>
+            <div style="font-size:12px; color:${subtle};">Utilização vs Treinamento</div>
+          </div>
+          <div style="display:flex; flex-direction:column; gap:6px; font-size:13px;">
+            ${rows}
+          </div>
+          ${totalBlock}
+          ${overallBlock}
+        </div>`;
+
+      const { offsetLeft, offsetTop } = chart.canvas;
+      tooltipEl.style.opacity = '1';
+      tooltipEl.style.left = `${offsetLeft + tooltip.caretX}px`;
+      tooltipEl.style.top = `${offsetTop + tooltip.caretY}px`;
+      tooltipEl.style.transform = 'translate(-50%, calc(-100% - 18px))';
+    };
+  }
+
+  function renderMergeHCTraining(ctx, palette, mode) {
+    if (!ctx || !MERGE_HC_DATA) return null;
+    const container = ctx.canvas?.closest('.chart-wrapper');
+    const labels = Array.isArray(MERGE_HC_DATA.situacao_labels) ? MERGE_HC_DATA.situacao_labels : [];
+    const datasetsPayload = Array.isArray(MERGE_HC_DATA.datasets) ? MERGE_HC_DATA.datasets : [];
+    if (!labels.length || !datasetsPayload.length) {
+      if (container) {
+        container.innerHTML = '<div class="text-muted text-center py-5">Nenhum dado disponível para compor o gráfico.</div>';
+      }
+      return null;
+    }
+
+    const totals = Array.isArray(MERGE_HC_DATA.totals) ? MERGE_HC_DATA.totals : labels.map(() => 0);
+    const overallTotal = Number.isFinite(MERGE_HC_DATA.overall_total) ? MERGE_HC_DATA.overall_total : totals.reduce((acc, value) => acc + (Number(value) || 0), 0);
+    const subtleColor = mode === 'dark' ? '#94a3b8' : '#64748b';
+    const legendColor = mode === 'dark' ? '#cbd5f5' : '#1f2937';
+
+    const resolveDatasetBaseColor = (rawLabel, fallback) => {
+      const label = (rawLabel || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+      if (label.includes('sim') || label.includes('treinado') || label.includes('yes')) {
+        return mode === 'dark' ? '#22c55e' : '#16a34a';
+      }
+      if (label.includes('nao') || label.includes('não') || label.includes('pendente') || label.includes('no')) {
+        return mode === 'dark' ? '#f97316' : '#dc2626';
+      }
+      if (label.includes('parcial')) {
+        return mode === 'dark' ? '#eab308' : '#f59e0b';
+      }
+      return fallback;
+    };
+
+    const datasetCount = datasetsPayload.length || 1;
+    const datasetConfigs = datasetsPayload.map((payload, idx) => {
+      const preferredBase = resolveDatasetBaseColor(payload.label, palette[idx % palette.length] || '#2563eb');
+      const baseColor = normalizeColor(preferredBase) || '#2563eb';
+      const softened = hexToRgba(shiftColor(baseColor, { l: mode === 'dark' ? 0.1 : 0.18, s: mode === 'dark' ? -0.03 : -0.08 }), mode === 'dark' ? 0.82 : 0.88);
+      const hoverColor = hexToRgba(shiftColor(baseColor, { l: mode === 'dark' ? 0.2 : -0.05, s: mode === 'dark' ? -0.02 : -0.04 }), mode === 'dark' ? 0.9 : 0.92);
+      const borderColor = adjustColor(baseColor, mode === 'dark' ? -0.35 : -0.18);
+      const alignedData = labels.map((_, position) => {
+        const value = Array.isArray(payload.data) ? payload.data[position] : 0;
+        return Number.isFinite(value) ? Number(value) : 0;
+      });
+      const isFirstDataset = idx === 0;
+      const isLastDataset = idx === datasetCount - 1;
+
+      return {
+        label: payload.label || `Execução ${idx + 1}`,
+        data: alignedData,
+        backgroundColor: softened,
+        hoverBackgroundColor: hoverColor,
+        borderColor,
+        borderWidth: 1.8,
+        maxBarThickness: 48,
+        categoryPercentage: 0.9,
+        barPercentage: 1,
+        borderSkipped: false,
+        borderRadius: {
+          topLeft: isFirstDataset ? 10 : 2,
+          bottomLeft: isFirstDataset ? 10 : 2,
+          topRight: isLastDataset ? 10 : 2,
+          bottomRight: isLastDataset ? 10 : 2
+        },
+        datalabels: {
+            display: (context) => {
+              const value = context?.dataset?.data?.[context.dataIndex];
+              const totalValue = Number.isFinite(totals?.[context.dataIndex]) ? totals[context.dataIndex] : 0;
+              return Number.isFinite(value) && value > 0 && totalValue > 0;
+            },
+          color: getReadableTextColor(baseColor),
+          backgroundColor: hexToRgba(adjustColor(baseColor, -0.2), mode === 'dark' ? 0.82 : 0.75),
+          borderColor: hexToRgba(adjustColor(baseColor, -0.55), mode === 'dark' ? 0.9 : 0.8),
+          borderWidth: 1,
+          borderRadius: 8,
+          padding: { top: 4, bottom: 4, left: 6, right: 6 },
+          formatter: (value, context) => {
+            const rowTotal = Number.isFinite(totals?.[context.dataIndex]) ? totals[context.dataIndex] : 0;
+            if (!rowTotal || !value) return '';
+            const perc = (value / rowTotal) * 100;
+            return `${value} • ${perc.toFixed(1)}%`;
+          },
+          font: { weight: '700', size: 11 },
+          anchor: 'end',
+          align: 'end',
+          offset: -30,
+          clamp: true
+        }
+      };
+    });
+
+    return new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: datasetConfigs
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: {
+            stacked: false,
+            ticks: {
+              color: subtleColor,
+              autoSkip: false,
+              padding: -4
+            },
+            grid: { display: false },
+            border: { display: false }
+          },
+          y: {
+            stacked: false,
+            beginAtZero: true,
+            ticks: {
+              color: subtleColor,
+              precision: 0
+            },
+            grid: {
+              color: mode === 'dark' ? 'rgba(148, 163, 184, 0.18)' : 'rgba(15, 23, 42, 0.08)'
+            }
+          }
+        },
+        plugins: {
+          legend: {
+            position: 'bottom',
+            labels: {
+              color: legendColor,
+              usePointStyle: true,
+              padding: 18
+            }
+          },
+          tooltip: {
+            enabled: false,
+            external: createMergeHCTooltip(labels, totals, overallTotal, mode)
+          },
+          datalabels: {
+            display: true
+          }
+        }
+      },
+      plugins: []
+    });
+  }
+
   function renderMergeColabPercent(ctx, palette, mode) {
     const container = ctx?.canvas?.closest('.chart-wrapper');
     if (!MERGE_COLAB_PERCENT || !Array.isArray(MERGE_COLAB_PERCENT.values)) {
@@ -1366,6 +1646,188 @@
               const perc = total > 0 ? (value / total) * 100 : 0;
               return perc >= 4 ? `${perc.toFixed(1)}%` : '';
             }
+          }
+        }
+      }
+    });
+  }
+
+  function renderMergeTurnoChart(ctx, key, mode) {
+    if (!ctx || !MERGE_TURNOS || !MERGE_TURNOS[key]) return null;
+    const container = ctx.canvas?.closest('.chart-wrapper');
+    const chartConfig = MERGE_TURNOS[key];
+    const labels = Array.isArray(chartConfig.labels) ? chartConfig.labels : [];
+    const datasetConfigs = Array.isArray(chartConfig.datasets) && chartConfig.datasets.length
+      ? chartConfig.datasets
+      : (Array.isArray(chartConfig.values) && chartConfig.values.length
+        ? [{ label: chartConfig.series_label || 'Treinados', values: chartConfig.values, color: chartConfig.color }]
+        : []);
+
+    const sanitizedDatasets = datasetConfigs.map((dataset, index) => {
+      const safeLabel = dataset.label || dataset.series_label || `Série ${index + 1}`;
+      const values = labels.map((_, idx) => {
+        if (!Array.isArray(dataset.values)) return 0;
+        const numeric = Number(dataset.values[idx]);
+        return Number.isFinite(numeric) ? numeric : 0;
+      });
+      return {
+        key: dataset.key || `dataset_${index}`,
+        label: safeLabel,
+        values,
+        color: normalizeColor(dataset.color) || null
+      };
+    });
+
+    const totalsPerLabel = labels.map((_, idx) => sanitizedDatasets.reduce((total, dataset) => total + (dataset.values[idx] || 0), 0));
+    const hasPositive = totalsPerLabel.some((total) => total > 0);
+    const canvasEl = ctx.canvas;
+    if (!labels.length || !hasPositive) {
+      if (container && canvasEl) {
+        canvasEl.style.display = 'none';
+        const placeholder = container.querySelector('[data-empty-turno]');
+        if (!placeholder) {
+          const empty = document.createElement('div');
+          empty.dataset.emptyTurno = key;
+          empty.className = 'text-muted text-center py-5 px-3';
+          empty.innerHTML = '<div class="d-inline-flex flex-column align-items-center gap-2"><i class="bi bi-inbox" style="font-size: 2rem;"></i><div>Nenhum colaborador com Execução por Voz "Sim" ou Treinamento "Sim" encontrado para este turno.</div></div>';
+          container.appendChild(empty);
+        }
+      }
+      return null;
+    }
+
+    if (container && canvasEl) {
+      canvasEl.style.display = '';
+      const placeholder = container.querySelector('[data-empty-turno]');
+      if (placeholder) {
+        placeholder.remove();
+      }
+    }
+
+    const paletteHints = [];
+    sanitizedDatasets.forEach((dataset) => {
+      if (dataset.color) {
+        paletteHints.push(dataset.color);
+      }
+    });
+    if (chartConfig.color) paletteHints.push(normalizeColor(chartConfig.color));
+    paletteHints.push(normalizeColor(getCssVar('--accent-color', '#2563eb')));
+    paletteHints.push('#16a34a');
+    const palette = buildPalette(Math.max(sanitizedDatasets.length, 1), paletteHints.filter(Boolean), mode);
+
+    const subtleColor = mode === 'dark' ? '#94a3b8' : '#64748b';
+    const legendColor = mode === 'dark' ? '#cbd5f5' : '#1f2937';
+    const gridColor = mode === 'dark' ? 'rgba(148, 163, 184, 0.18)' : 'rgba(15, 23, 42, 0.08)';
+
+    const datasetCount = sanitizedDatasets.length || 1;
+    const chartDatasets = sanitizedDatasets.map((dataset, index) => {
+      const baseColor = dataset.color || palette[index] || (index === 0 ? '#2563eb' : '#16a34a');
+      const softened = hexToRgba(shiftColor(baseColor, { l: mode === 'dark' ? 0.1 : 0.18, s: mode === 'dark' ? -0.03 : -0.06 }), mode === 'dark' ? 0.82 : 0.9);
+      const hoverColor = hexToRgba(shiftColor(baseColor, { l: mode === 'dark' ? 0.2 : -0.05, s: mode === 'dark' ? -0.02 : -0.03 }), mode === 'dark' ? 0.9 : 0.95);
+      const borderColor = adjustColor(baseColor, mode === 'dark' ? -0.35 : -0.18);
+      const alignedValues = dataset.values.map((value) => {
+        const numeric = Number(value);
+        return Number.isFinite(numeric) ? numeric : 0;
+      });
+      const isFirstDataset = index === 0;
+      const isLastDataset = index === datasetCount - 1;
+
+      return {
+        label: dataset.label,
+        data: alignedValues,
+        backgroundColor: softened,
+        hoverBackgroundColor: hoverColor,
+        borderColor,
+        borderWidth: 1.8,
+        maxBarThickness: 56,
+        categoryPercentage: 1,
+        barPercentage: 1,
+        borderSkipped: false,
+        borderRadius: {
+          topLeft: isFirstDataset ? 10 : 0,
+          bottomLeft: isFirstDataset ? 10 : 0,
+          topRight: isLastDataset ? 10 : 0,
+          bottomRight: isLastDataset ? 10 : 0
+        },
+        datalabels: {
+          display: (context) => {
+            const value = context?.dataset?.data?.[context.dataIndex];
+            const totalForLabel = Number.isFinite(totalsPerLabel?.[context.dataIndex]) ? totalsPerLabel[context.dataIndex] : 0;
+            return Number.isFinite(value) && value > 0 && totalForLabel > 0;
+          },
+          color: getReadableTextColor(baseColor),
+          backgroundColor: hexToRgba(adjustColor(baseColor, -0.2), mode === 'dark' ? 0.82 : 0.75),
+          borderColor: hexToRgba(adjustColor(baseColor, -0.55), mode === 'dark' ? 0.9 : 0.82),
+          borderWidth: 1,
+          borderRadius: 8,
+          padding: { top: 4, bottom: 4, left: 6, right: 6 },
+          formatter: (value, context) => {
+            const totalForLabel = Number.isFinite(totalsPerLabel?.[context.dataIndex]) ? totalsPerLabel[context.dataIndex] : 0;
+            if (!Number.isFinite(value) || value <= 0 || !totalForLabel) return '';
+            const share = (value / totalForLabel) * 100;
+            return `${value.toLocaleString('pt-BR')} • ${share.toFixed(1)}%`;
+          },
+          font: { weight: '700', size: 11 },
+          anchor: 'end',
+          align: 'end',
+          offset: -28,
+          clamp: true
+        },
+        _baseColor: baseColor,
+        order: index
+      };
+    });
+
+    const overallTotal = totalsPerLabel.reduce((acc, value) => {
+      const numeric = Number(value);
+      return acc + (Number.isFinite(numeric) ? numeric : 0);
+    }, 0);
+
+    return new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: chartDatasets
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: {
+            stacked: false,
+            ticks: {
+              color: subtleColor,
+              autoSkip: false
+            },
+            grid: { display: false },
+            border: { display: false }
+          },
+          y: {
+            beginAtZero: true,
+            ticks: {
+              color: subtleColor,
+              precision: 0
+            },
+            grid: {
+              color: gridColor
+            }
+          }
+        },
+        plugins: {
+          legend: {
+            position: 'bottom',
+            labels: {
+              color: legendColor,
+              usePointStyle: true,
+              padding: 18
+            }
+          },
+          tooltip: {
+            enabled: false,
+            external: createMergeTurnoTooltip(labels, totalsPerLabel, overallTotal, mode)
+          },
+          datalabels: {
+            display: true
           }
         }
       }
@@ -1519,7 +1981,10 @@
     if (!ensureChartSetup()) return;
     const canvas = document.getElementById('chart-merge-colab-percent');
     const barCanvas = document.getElementById('chart-merge-colab');
-    if (!canvas && !barCanvas) return;
+    const hcCanvas = document.getElementById('chart-merge-hc');
+    const turno1Canvas = document.getElementById('chart-merge-turno1');
+    const turno2Canvas = document.getElementById('chart-merge-turno2');
+    if (!canvas && !barCanvas && !hcCanvas && !turno1Canvas && !turno2Canvas) return;
     if (window.AppPanel.mergeMounted && !force) return;
 
     const mode = document.documentElement.dataset.bsTheme === 'dark' ? 'dark' : 'light';
@@ -1529,7 +1994,8 @@
       getCssVar('--success-color', '#27ae60'),
       getCssVar('--warning-color', '#f39c12')
     ];
-    const palette = buildPalette(4, paletteBase, mode);
+    const hcDatasetSize = Array.isArray(MERGE_HC_DATA?.datasets) ? MERGE_HC_DATA.datasets.length : 0;
+    const palette = buildPalette(Math.max(4, hcDatasetSize), paletteBase, mode);
 
     if (window.AppPanel.charts.mergeColabPercent) {
       try {
@@ -1560,6 +2026,54 @@
       const barChart = renderMergeColabBar(barCanvas.getContext('2d'), palette, mode);
       if (barChart) {
         window.AppPanel.charts.mergeColabBar = barChart;
+      }
+    }
+
+    if (window.AppPanel.charts.mergeHC) {
+      try {
+        window.AppPanel.charts.mergeHC.destroy();
+      } catch (err) {
+        console.warn('Falha ao destruir gráfico HC de treinamento', err);
+      }
+      delete window.AppPanel.charts.mergeHC;
+    }
+
+    if (hcCanvas) {
+      const hcChart = renderMergeHCTraining(hcCanvas.getContext('2d'), palette, mode);
+      if (hcChart) {
+        window.AppPanel.charts.mergeHC = hcChart;
+      }
+    }
+
+    if (window.AppPanel.charts.mergeTurno1) {
+      try {
+        window.AppPanel.charts.mergeTurno1.destroy();
+      } catch (err) {
+        console.warn('Falha ao destruir gráfico de turno 1', err);
+      }
+      delete window.AppPanel.charts.mergeTurno1;
+    }
+
+    if (window.AppPanel.charts.mergeTurno2) {
+      try {
+        window.AppPanel.charts.mergeTurno2.destroy();
+      } catch (err) {
+        console.warn('Falha ao destruir gráfico de turno 2', err);
+      }
+      delete window.AppPanel.charts.mergeTurno2;
+    }
+
+    if (turno1Canvas) {
+      const turno1Chart = renderMergeTurnoChart(turno1Canvas.getContext('2d'), 'turno1', mode);
+      if (turno1Chart) {
+        window.AppPanel.charts.mergeTurno1 = turno1Chart;
+      }
+    }
+
+    if (turno2Canvas) {
+      const turno2Chart = renderMergeTurnoChart(turno2Canvas.getContext('2d'), 'turno2', mode);
+      if (turno2Chart) {
+        window.AppPanel.charts.mergeTurno2 = turno2Chart;
       }
     }
 

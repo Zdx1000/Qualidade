@@ -3,6 +3,7 @@ import math
 import re
 import unicodedata
 import pandas as pd
+import numpy as np
 from io import BytesIO
 from pathlib import Path
 from datetime import datetime, timedelta
@@ -135,6 +136,7 @@ def get_input_column_definitions():
         {"name": "Data", "param": "data", "icon": "calendar-event", "placeholder": "Data"},
         {"name": "Execução por Voz", "param": "execucao", "icon": "mic", "placeholder": "Execução"},
         {"name": "Treinado", "param": "treinado", "icon": "mortarboard", "placeholder": "Treinado"},
+        {"name": "Turno HC", "param": "turno_hc", "icon": "clock-history", "placeholder": "Turno"},
     ]
 
 
@@ -1229,6 +1231,53 @@ def painel_grafico(planilha=None):
             base.update(overrides)
         return base
 
+    hc_turno_lookup = {}
+    try:
+        lookup_source_hc = last_planilha_hc
+    except NameError:
+        lookup_source_hc = None
+    if lookup_source_hc is not None:
+        try:
+            required_cols = {'Matrícula', 'Turno HC'}
+            if required_cols.issubset(lookup_source_hc.columns):
+                extra_cols = []
+                if 'Situação HC' in lookup_source_hc.columns:
+                    extra_cols.append('Situação HC')
+                if 'Turno' in lookup_source_hc.columns:
+                    extra_cols.append('Turno')
+                turno_lookup_df = lookup_source_hc[['Matrícula', 'Turno HC', *extra_cols]].copy()
+                turno_lookup_df['Matrícula'] = turno_lookup_df['Matrícula'].apply(normalize_matricula)
+                turno_lookup_df = turno_lookup_df[turno_lookup_df['Matrícula'].notna()]
+                turno_lookup_df['Turno HC'] = turno_lookup_df['Turno HC'].fillna('').astype(str).str.strip()
+
+                if 'Situação HC' in turno_lookup_df.columns:
+                    situacao_normalizada = turno_lookup_df['Situação HC'].apply(normalize_situacao_hc).fillna('')
+                    situacao_ascii = (
+                        situacao_normalizada
+                        .astype(str)
+                        .apply(lambda value: unicodedata.normalize('NFKD', value).encode('ASCII', 'ignore').decode('ASCII'))
+                        .str.lower()
+                    )
+                    temporario_mask = situacao_ascii.str.contains('tempor', na=False)
+                else:
+                    temporario_mask = pd.Series(False, index=turno_lookup_df.index)
+
+                if 'Turno' in turno_lookup_df.columns:
+                    turno_fallback = turno_lookup_df['Turno'].fillna('').astype(str).str.strip()
+                else:
+                    turno_fallback = pd.Series('', index=turno_lookup_df.index)
+
+                fallback_mask = (turno_lookup_df['Turno HC'] == '') & temporario_mask & (turno_fallback != '')
+                if fallback_mask.any():
+                    turno_lookup_df.loc[fallback_mask, 'Turno HC'] = turno_fallback.loc[fallback_mask]
+
+                turno_lookup_df = turno_lookup_df.drop_duplicates(subset=['Matrícula'], keep='first')
+                turno_lookup_df['Turno HC'] = turno_lookup_df['Turno HC'].replace('', np.nan).fillna('1° Turno')
+                hc_turno_lookup = turno_lookup_df.set_index('Matrícula')['Turno HC'].to_dict()
+        except Exception as err:
+            current_app.logger.warning('Falha ao construir lookup de Turno HC para Input*Dados: %s', err)
+            hc_turno_lookup = {}
+
     input_column_definitions = get_input_column_definitions()
     input_table_columns = [col["name"] for col in input_column_definitions]
     input_table_rows = []
@@ -1242,6 +1291,26 @@ def painel_grafico(planilha=None):
     input_table_range_start = 0
     input_table_range_end = 0
     merge_colab_percent = None
+    merge_turno_charts = {
+        'turno1': {
+            'labels': [],
+            'values': [],
+            'datasets': [],
+            'totals': {'execucao': 0, 'treinado': 0},
+            'series_label': 'Treinados',
+            'turno_label': '1° Turno',
+            'color': '#f59e0b'
+        },
+        'turno2': {
+            'labels': [],
+            'values': [],
+            'datasets': [],
+            'totals': {'execucao': 0, 'treinado': 0},
+            'series_label': 'Treinados',
+            'turno_label': '2° Turno',
+            'color': '#ef4444'
+        }
+    }
     input_sort = (request.args.get('input_sort') or '').strip()
     valid_input_sorts = {col['param'] for col in input_column_definitions}
     if input_sort not in valid_input_sorts:
@@ -1273,6 +1342,19 @@ def painel_grafico(planilha=None):
                     default_value = 'Não' if col == 'Treinado' else ''
                     df_input[col] = default_value
             df_input = df_input[input_table_columns].copy()
+            if hc_turno_lookup and {'Funcionário', 'Turno HC'}.issubset(df_input.columns):
+                try:
+                    normalized_matriculas = df_input['Funcionário'].apply(normalize_matricula)
+                    mapped_turnos = normalized_matriculas.map(hc_turno_lookup).fillna('')
+                    existing_turnos = df_input['Turno HC'].fillna('').astype(str)
+                    df_input['Turno HC'] = (
+                        existing_turnos
+                        .where(existing_turnos.str.strip() != '', mapped_turnos)
+                        .fillna('')
+                    )
+                    df_input['Turno HC'] = df_input['Turno HC'].replace('', '1° Turno')
+                except Exception as err:
+                    current_app.logger.warning('Falha ao combinar Turno HC com Input*Dados: %s', err)
             filtered_df = df_input.copy()
             for col_name, filter_value in input_filters.items():
                 filter_series = filtered_df[col_name].astype(str).fillna('')
@@ -1315,27 +1397,34 @@ def painel_grafico(planilha=None):
                         formatted[col] = text
                     input_table_rows.append(formatted)
 
-                trained_mask = display_df["Treinado"].astype(str).str.strip().str.lower() == 'sim'
-                trained_df = display_df[trained_mask].copy()
+                negative_pattern = re.compile(r"\b(n[aã]o|pendente|aguard|sem|falta)\b", re.IGNORECASE)
 
-                trained_exec_count = 0
-                trained_total = len(trained_df)
-
-                if trained_total:
+                def is_execucao_sim(value):
+                    if value is None:
+                        return False
                     try:
-                        execution_series = trained_df["Execução por Voz"].astype(str).map(lambda v: v.strip())
+                        text = str(value).strip()
                     except Exception:
-                        execution_series = trained_df["Execução por Voz"].astype(str)
+                        return False
+                    if not text:
+                        return False
+                    lowered = text.lower()
+                    if lowered in {"", "nan", "none", "null", "0"}:
+                        return False
+                    if negative_pattern.search(lowered):
+                        return False
+                    return 'sim' in lowered
 
-                    negative_pattern = re.compile(r"\b(n[aã]o|pendente|aguard|sem|falta)\b", re.IGNORECASE)
+                trained_mask = display_df["Treinado"].astype(str).str.strip().str.lower() == 'sim'
+                trained_total = int(trained_mask.sum())
 
-                    for value in execution_series:
-                        if not value or value.lower() in {"", "nan", "none", "0"}:
-                            continue
-                        if negative_pattern.search(value.lower()):
-                            continue
-                        trained_exec_count += 1
+                if 'Execução por Voz' in display_df.columns:
+                    exec_sim_mask = display_df['Execução por Voz'].apply(is_execucao_sim)
+                else:
+                    exec_sim_mask = pd.Series(False, index=display_df.index)
 
+                trained_exec_mask = trained_mask & exec_sim_mask
+                trained_exec_count = int(trained_exec_mask.sum())
                 trained_no_exec_count = max(0, trained_total - trained_exec_count)
                 total_count = trained_exec_count + trained_no_exec_count
                 if total_count > 0:
@@ -1350,6 +1439,89 @@ def painel_grafico(planilha=None):
                     "percentages": [trained_pct, untrained_pct],
                     "total": total_count
                 }
+
+                if {'Data', 'Turno HC'}.issubset(display_df.columns):
+                    def normalize_turno_label(value):
+                        default_turno = '1° Turno'
+                        if value is None:
+                            return default_turno
+                        try:
+                            text = str(value).strip()
+                        except Exception:
+                            return default_turno
+                        if not text:
+                            return default_turno
+                        normalized = unicodedata.normalize('NFKD', text).encode('ASCII', 'ignore').decode('ASCII')
+                        lowered = normalized.lower().replace('º', '').replace('°', '')
+                        lowered = re.sub(r'[^a-z0-9]+', ' ', lowered).strip()
+                        if lowered.startswith('1') or lowered.startswith('primeiro') or lowered.startswith('turno 1'):
+                            return '1° Turno'
+                        if lowered.startswith('2') or lowered.startswith('segundo') or lowered.startswith('turno 2'):
+                            return '2° Turno'
+                        return text or default_turno
+
+                    def prepare_group(mask: pd.Series, count_label: str) -> pd.DataFrame:
+                        if mask is None or not mask.any():
+                            return pd.DataFrame(columns=['__turno', '__parsed_date', count_label])
+                        subset = display_df.loc[mask, ['Data', 'Turno HC']].copy()
+                        subset['__parsed_date'] = pd.to_datetime(subset['Data'], dayfirst=True, errors='coerce')
+                        subset = subset.dropna(subset=['__parsed_date'])
+                        if subset.empty:
+                            return pd.DataFrame(columns=['__turno', '__parsed_date', count_label])
+                        subset['__turno'] = subset['Turno HC'].apply(normalize_turno_label)
+                        grouped = (
+                            subset
+                            .groupby(['__turno', '__parsed_date'])
+                            .size()
+                            .reset_index(name=count_label)
+                        )
+                        return grouped
+
+                    exec_grouped = prepare_group(exec_sim_mask, 'execucao_count')
+                    trained_grouped = prepare_group(trained_mask, 'treinado_count')
+
+                    if not exec_grouped.empty or not trained_grouped.empty:
+                        combined = pd.merge(
+                            exec_grouped,
+                            trained_grouped,
+                            on=['__turno', '__parsed_date'],
+                            how='outer'
+                        ).fillna(0)
+                        combined['execucao_count'] = combined.get('execucao_count', 0).astype(int)
+                        combined['treinado_count'] = combined.get('treinado_count', 0).astype(int)
+
+                        for key, turno_label in [('turno1', '1° Turno'), ('turno2', '2° Turno')]:
+                            turno_df = combined[combined['__turno'] == turno_label].copy()
+                            if not turno_df.empty:
+                                turno_df = turno_df.sort_values('__parsed_date')
+                                labels = turno_df['__parsed_date'].dt.strftime('%d/%m/%Y').tolist()
+                                exec_values = turno_df['execucao_count'].astype(int).tolist()
+                                treinado_values = turno_df['treinado_count'].astype(int).tolist()
+                                merge_turno_charts[key]['labels'] = labels
+                                merge_turno_charts[key]['values'] = exec_values
+                                merge_turno_charts[key]['datasets'] = [
+                                    {
+                                        'key': 'execucao',
+                                        'label': 'Execução por Voz (Sim)',
+                                        'values': exec_values,
+                                        'color': '#2563eb'
+                                    },
+                                    {
+                                        'key': 'treinado',
+                                        'label': 'Treinado (Sim)',
+                                        'values': treinado_values,
+                                        'color': '#16a34a'
+                                    }
+                                ]
+                                merge_turno_charts[key]['totals'] = {
+                                    'execucao': int(sum(exec_values)),
+                                    'treinado': int(sum(treinado_values))
+                                }
+                            else:
+                                merge_turno_charts[key]['labels'] = []
+                                merge_turno_charts[key]['values'] = []
+                                merge_turno_charts[key]['datasets'] = []
+                                merge_turno_charts[key]['totals'] = {'execucao': 0, 'treinado': 0}
 
                 preserved_args = build_query_args(overrides={'tab': 'input', 'input_filter': 'separacao'})
                 preserved_args.pop('input_page', None)
@@ -1411,6 +1583,7 @@ def painel_grafico(planilha=None):
     hc_merged_rows = []
     hc_merged_columns = []
     hc_preview_info = None
+    hc_training_chart = None
     hc_table_total = 0
     hc_table_page_size = 10
     hc_table_page = request.args.get('hc_page', default=1, type=int) or 1
@@ -1463,8 +1636,20 @@ def painel_grafico(planilha=None):
                     on='Matrícula',
                     how='left'
                 )
+            hc_plan_for_chart = source_hc[['Matrícula', 'Situação HC']].copy()
+            if execucao_lookup is not None:
+                hc_plan_for_chart = pd.merge(
+                    hc_plan_for_chart,
+                    execucao_lookup,
+                    on='Matrícula',
+                    how='left'
+                )
+            elif 'Execução por Voz' not in hc_plan_for_chart.columns:
+                hc_plan_for_chart['Execução por Voz'] = ''
             if 'Situação HC' in merged_hc.columns:
                 merged_hc['Situação HC'] = merged_hc['Situação HC'].apply(normalize_situacao_hc)
+            if 'Situação HC' in hc_plan_for_chart.columns:
+                hc_plan_for_chart['Situação HC'] = hc_plan_for_chart['Situação HC'].apply(normalize_situacao_hc)
             if {'Turno HC', 'Turno', 'Situação HC'}.issubset(merged_hc.columns):
                 temporario_mask = merged_hc['Situação HC'] == 'Tempórario'
                 if temporario_mask.any():
@@ -1482,6 +1667,91 @@ def painel_grafico(planilha=None):
                 'with_hc': with_hc,
                 'without_hc': without_hc,
             }
+
+            execucao_column = 'Execução por Voz' if 'Execução por Voz' in merged_hc.columns else None
+            if execucao_column and {'Situação HC', 'Matrícula'}.issubset(merged_hc.columns):
+                pivot_source = merged_hc[['Situação HC', execucao_column, 'Matrícula']].copy()
+
+                def _clean_execucao(value):
+                    if pd.isna(value):
+                        return ''
+                    text = str(value).strip()
+                    lowered = text.lower()
+                    if not text or lowered in {'nan', 'none', 'null', 'sem informação', 'sem informacao', 'sem dados'}:
+                        return ''
+                    return text
+
+                def _normalize_execucao_category(value):
+                    if not value:
+                        return ''
+                    text = str(value).strip()
+                    if not text:
+                        return ''
+                    normalized = unicodedata.normalize('NFKD', text).encode('ASCII', 'ignore').decode('ASCII')
+                    normalized = re.sub(r'\s+', ' ', normalized).strip().lower()
+                    if not normalized:
+                        return ''
+                    normalized = normalized.replace('%', '')
+                    if 'nao' in normalized:
+                        return 'Não'
+                    if 'sim' in normalized:
+                        return 'Sim'
+                    return ''
+
+                pivot_source[execucao_column] = pivot_source[execucao_column].apply(_clean_execucao)
+                pivot_source = pivot_source[pivot_source[execucao_column] != '']
+                pivot_source[execucao_column] = pivot_source[execucao_column].apply(_normalize_execucao_category)
+                pivot_source = pivot_source[pivot_source[execucao_column] != '']
+                if not pivot_source.empty:
+                    pivot_source['Situação HC'] = pivot_source['Situação HC'].fillna('Sem Situação').astype(str).str.strip()
+                    pivot_source.loc[pivot_source['Situação HC'] == '', 'Situação HC'] = 'Sem Situação'
+
+                    pivot_table = pd.pivot_table(
+                        pivot_source,
+                        index='Situação HC',
+                        columns=execucao_column,
+                        values='Matrícula',
+                        aggfunc='count',
+                        fill_value=0,
+                    )
+
+                    if not pivot_table.empty:
+                        try:
+                            pivot_table = pivot_table.astype(int)
+                        except Exception:
+                            pivot_table = pivot_table.applymap(lambda x: int(x) if pd.notna(x) else 0)
+
+                        desired_execucao = ['Sim', 'Não']
+                        pivot_table = pivot_table.loc[:, [col for col in pivot_table.columns if col in desired_execucao]]
+                        for col in desired_execucao:
+                            if col not in pivot_table.columns:
+                                pivot_table[col] = 0
+                        pivot_table = pivot_table[desired_execucao]
+                        pivot_table = pivot_table.loc[:, (pivot_table != 0).any(axis=0)]
+
+                        if not pivot_table.empty:
+                            totals_by_situacao = pivot_table.sum(axis=1).sort_values(ascending=False)
+                            pivot_table = pivot_table.loc[totals_by_situacao.index]
+                            pivot_table = pivot_table.loc[:, [col for col in desired_execucao if col in pivot_table.columns]]
+
+                            datasets = []
+                            for column in pivot_table.columns:
+                                column_label = str(column).strip() or 'Execução não informada'
+                                values = [int(v) for v in pivot_table[column].astype(int).tolist()]
+                                datasets.append({
+                                    'label': column_label,
+                                    'data': values,
+                                    'total': int(sum(values)),
+                                })
+
+                            hc_training_chart = {
+                                'situacao_labels': [str(idx) for idx in pivot_table.index.tolist()],
+                                'datasets': datasets,
+                                'totals': [int(v) for v in totals_by_situacao.loc[pivot_table.index].astype(int).tolist()],
+                                'execucao_labels': [str(c) for c in pivot_table.columns.tolist()],
+                                'overall_total': int(pivot_table.values.sum()),
+                            }
+
 
             slug_counts = {}
             hc_filters = {}
@@ -1619,6 +1889,7 @@ def painel_grafico(planilha=None):
         input_table_range_start=input_table_range_start,
         input_table_range_end=input_table_range_end,
         merge_colab_percent=merge_colab_percent,
+        merge_turno_charts=merge_turno_charts,
         input_column_meta=input_column_meta,
         input_sort=input_sort,
         input_order=input_order,
@@ -1639,6 +1910,7 @@ def painel_grafico(planilha=None):
         hc_order=hc_order,
         hc_form_args=hc_form_args,
         hc_export_args=hc_export_args,
+        hc_training_chart=hc_training_chart,
     )
 
 
@@ -1652,6 +1924,24 @@ def export_input_separacao():
     if source_df is None:
         flash('Nenhuma planilha de separação carregada para exportação.', 'warning')
         return redirect(url_for('main.painel_grafico', tab='input', input_filter='separacao'))
+
+    hc_turno_lookup = {}
+    try:
+        lookup_source_hc = last_planilha_hc
+    except NameError:
+        lookup_source_hc = None
+    if lookup_source_hc is not None:
+        try:
+            if {'Matrícula', 'Turno HC'}.issubset(lookup_source_hc.columns):
+                turno_lookup_df = lookup_source_hc[['Matrícula', 'Turno HC']].copy()
+                turno_lookup_df['Matrícula'] = turno_lookup_df['Matrícula'].apply(normalize_matricula)
+                turno_lookup_df = turno_lookup_df[turno_lookup_df['Matrícula'].notna()]
+                turno_lookup_df['Turno HC'] = turno_lookup_df['Turno HC'].fillna('').astype(str).str.strip()
+                turno_lookup_df = turno_lookup_df.drop_duplicates(subset=['Matrícula'], keep='first')
+                hc_turno_lookup = turno_lookup_df.set_index('Matrícula')['Turno HC'].to_dict()
+        except Exception as err:
+            current_app.logger.warning('Falha ao construir lookup de Turno HC para exportação: %s', err)
+            hc_turno_lookup = {}
 
     definitions = get_input_column_definitions()
     columns = [col['name'] for col in definitions]
@@ -1669,6 +1959,15 @@ def export_input_separacao():
             export_df[column] = default_value
 
     export_df = export_df[columns].copy()
+
+    if hc_turno_lookup and {'Funcionário', 'Turno HC'}.issubset(export_df.columns):
+        try:
+            normalized_matriculas = export_df['Funcionário'].apply(normalize_matricula)
+            mapped_turnos = normalized_matriculas.map(hc_turno_lookup).fillna('')
+            existing_turnos = export_df['Turno HC'].fillna('').astype(str)
+            export_df['Turno HC'] = existing_turnos.where(existing_turnos.str.strip() != '', mapped_turnos).fillna('')
+        except Exception as err:
+            current_app.logger.warning('Falha ao combinar Turno HC na exportação de Input*Dados: %s', err)
 
     filters = {}
     for definition in definitions:
