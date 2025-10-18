@@ -906,22 +906,25 @@ def input_dados():
                     df_trabalho = df[df_listColomns].copy()
                     df_trabalho["MOD"] = df_trabalho["Do Endereço"].fillna("").astype(str).str[:1]
 
-                    existing_matriculas = set()
-                    for (value,) in (
-                        db.session.query(Colaborador.matricula)
+                    talkman_matriculas = set()
+                    for matricula_raw, tipo_raw in (
+                        db.session.query(Colaborador.matricula, Colaborador.tipo)
                         .filter(Colaborador.matricula.isnot(None))
                         .all()
                     ):
-                        if value is None:
+                        if matricula_raw is None:
                             continue
                         try:
-                            existing_matriculas.add(int(value))
+                            matricula = int(matricula_raw)
                         except (TypeError, ValueError):
                             continue
+                        tipo = (tipo_raw or '').strip().upper()
+                        if tipo == 'TALKMAN':
+                            talkman_matriculas.add(matricula)
 
                     def flag_treinado(raw):
                         matricula = normalize_matricula(raw)
-                        return 'Sim' if matricula is not None and matricula in existing_matriculas else 'Não'
+                        return 'Sim' if matricula is not None and matricula in talkman_matriculas else 'Não'
 
                     df_trabalho['Treinado'] = df_trabalho['Funcionário'].apply(flag_treinado)
 
@@ -1607,16 +1610,19 @@ def painel_grafico(planilha=None):
     if source_hc is not None:
         try:
             bind = db.session.get_bind()
-            stmt = select(
-                Colaborador.matricula.label("Matrícula"),
-                Colaborador.nome.label("Nome"),
-                Colaborador.tipo.label("Tipo"),
-                Colaborador.setor.label("Setor"),
-                Colaborador.area.label("Área"),
-                Colaborador.turno.label("Turno"),
-                Colaborador.supervisor.label("Supervisor"),
-                Colaborador.integracao.label("Integração"),
-                Colaborador.data.label("Data"),
+            stmt = (
+                select(
+                    Colaborador.matricula.label("Matrícula"),
+                    Colaborador.nome.label("Nome"),
+                    Colaborador.tipo.label("Tipo"),
+                    Colaborador.setor.label("Setor"),
+                    Colaborador.area.label("Área"),
+                    Colaborador.turno.label("Turno"),
+                    Colaborador.supervisor.label("Supervisor"),
+                    Colaborador.integracao.label("Integração"),
+                    Colaborador.data.label("Data"),
+                )
+                .where(Colaborador.tipo == 'TALKMAN')
             )
             df_db = pd.read_sql(stmt, bind)
             df_db['Matrícula'] = df_db['Matrícula'].apply(normalize_matricula)
